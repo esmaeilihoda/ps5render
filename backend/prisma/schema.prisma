@@ -1,0 +1,59 @@
+generator client {
+provider = "prisma-client-js"
+}
+
+datasource db {
+provider = "postgresql"
+url = env("DATABASE_URL")
+}
+
+enum Role {
+USER
+ADMIN
+}
+
+enum TournamentStatus {
+DRAFT
+PUBLISHED
+COMPLETED
+CANCELED
+}
+
+model User {
+id String @id @default(cuid())
+email String @unique
+name String
+psnId String @unique
+// PlayStation Network linking
+// - psnRefreshToken: long sensitive string stored securely (optional)
+psnRefreshToken String? @db.Text
+isPsnVerified Boolean @default(false)
+passwordHash String
+role Role @default(USER)
+emailVerified DateTime?
+createdAt DateTime @default(now())
+updatedAt DateTime @updatedAt
+
+// Admin-created tournaments
+createdTournaments Tournament[]
+}
+
+model Tournament {
+id String @id @default(cuid())
+title String
+game String
+description String?
+rules String?
+imageUrl String?
+entryFee Int @default(0) // in USD (integer) for now
+prizePool Int @default(0) // in USD (integer) for now
+maxPlayers Int
+startAt DateTime
+status TournamentStatus @default(DRAFT)
+
+createdById String
+createdBy User @relation(fields: [createdById], references: [id])
+
+createdAt DateTime @default(now())
+updatedAt DateTime @updatedAt
+}
