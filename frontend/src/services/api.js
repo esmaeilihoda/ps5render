@@ -1,6 +1,9 @@
+// Prefer explicit VITE_API_URL / VITE_API_BASE_URL set at build time. If not
+// set, fall back to a relative API path so the bundle won't be baked with a
+// hardcoded localhost URL (which breaks when deployed to Vercel).
 export const API_URL =
   (import.meta && import.meta.env && (import.meta.env.VITE_API_URL || import.meta.env.VITE_API_BASE_URL)) ||
-  'http://localhost:5001';
+  ''; // relative paths (e.g. '/api/...') will be resolved against the current origin
 
 function authHeader() {
   let t = null;
@@ -31,23 +34,29 @@ async function handle(res) {
 
 // Simple helpers (so SignUpPage can import { apiPost } etc.)
 export function apiGet(path) {
-  return fetch(API_URL + path, { method: 'GET', headers: jsonHeaders() }).then(handle);
+  const base = API_URL || '';
+  return fetch(base + path, { method: 'GET', headers: jsonHeaders() }).then(handle);
 }
 export function apiPost(path, body) {
-  return fetch(API_URL + path, { method: 'POST', headers: jsonHeaders(), body: JSON.stringify(body) }).then(handle);
+  const base = API_URL || '';
+  return fetch(base + path, { method: 'POST', headers: jsonHeaders(), body: JSON.stringify(body) }).then(handle);
 }
 export function apiPut(path, body) {
-  return fetch(API_URL + path, { method: 'PUT', headers: jsonHeaders(), body: JSON.stringify(body) }).then(handle);
+  const base = API_URL || '';
+  return fetch(base + path, { method: 'PUT', headers: jsonHeaders(), body: JSON.stringify(body) }).then(handle);
 }
 export function apiPatch(path, body) {
-  return fetch(API_URL + path, { method: 'PATCH', headers: jsonHeaders(), body: JSON.stringify(body) }).then(handle);
+  const base = API_URL || '';
+  return fetch(base + path, { method: 'PATCH', headers: jsonHeaders(), body: JSON.stringify(body) }).then(handle);
 }
 export function apiDelete(path) {
-  return fetch(API_URL + path, { method: 'DELETE', headers: jsonHeaders() }).then(handle);
+  const base = API_URL || '';
+  return fetch(base + path, { method: 'DELETE', headers: jsonHeaders() }).then(handle);
 }
 export function apiUpload(path, formData) {
   // Do not set Content-Type for FormData
-  return fetch(API_URL + path, { method: 'POST', headers: authHeader(), body: formData }).then(handle);
+  const base = API_URL || '';
+  return fetch(base + path, { method: 'POST', headers: authHeader(), body: formData }).then(handle);
 }
 
 // Domain API kept for back-compat, now built on the helpers above
