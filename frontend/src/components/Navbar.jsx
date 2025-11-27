@@ -24,13 +24,53 @@ const Navbar = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const { language, changeLanguage, t } = useLanguage();
-  const { isAuthenticated, user, logout } = useAuth();
+  const { isAuthenticated, user, token, logout } = useAuth();
+  const [walletInfo, setWalletInfo] = useState({ walletBalance: '0', usdtBalance: '0' });
+
+  function formatCompactBalance(bal) {
+    try {
+      if (bal === undefined || bal === null) return '0';
+      const num = Number(bal);
+      if (isNaN(num)) return String(bal);
+      
+      if (num >= 1000000) {
+        return (num / 1000000).toFixed(1).replace(/\.0$/, '') + 'M';
+      } else if (num >= 1000) {
+        return (num / 1000).toFixed(1).replace(/\.0$/, '') + 'K';
+      }
+      return num.toLocaleString();
+    } catch (e) {
+      return String(bal ?? '0');
+    }
+  }
 
   useEffect(() => {
     const handleScroll = () => setIsScrolled(window.scrollY > 50);
     window.addEventListener('scroll', handleScroll);
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function fetchWallet() {
+      if (!isAuthenticated || !token) return;
+      try {
+        const res = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5001'}/api/wallet`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        const data = await res.json();
+        if (!cancelled && res.ok && data?.success) {
+          setWalletInfo({
+            walletBalance: data.walletBalance ?? '0',
+            usdtBalance: data.usdtBalance ?? '0'
+          });
+        }
+      } catch {}
+    }
+    fetchWallet();
+    const id = setInterval(fetchWallet, 20000);
+    return () => { cancelled = true; clearInterval(id); };
+  }, [isAuthenticated, token]);
 
   function handleLogout() {
     logout();
@@ -95,26 +135,53 @@ const Navbar = () => {
               </Link>
             ))}
 
-            {/* Admin link for admins */}
+            {/* Admin links for admins (tournaments + transactions) */}
             {isAuthenticated && user?.role === 'ADMIN' && (
-              <Link
-                to="/admin"
-                className="nav-link"
-                onClick={() => setIsMobileMenuOpen(false)}
-              >
-                <span>Admin</span>
-              </Link>
+              <div className="admin-nav">
+                <Link to="/admin" className={`nav-link ${location.pathname === '/admin' ? 'active' : ''}`} onClick={() => setIsMobileMenuOpen(false)}>
+                  <span>Tournaments</span>
+                </Link>
+                <Link to="/admin/transactions" className={`nav-link ${location.pathname === '/admin/transactions' ? 'active' : ''}`} onClick={() => setIsMobileMenuOpen(false)}>
+                  <span>Transactions</span>
+                </Link>
+              </div>
             )}
           </div>
 
           <div className="navbar-right">
-            <motion.div className="wallet-display" whileHover={{ scale: 1.05 }}>
-              <Wallet size={20} />
-              <div className="wallet-amounts">
-                <span className="wallet-amount">$1,234</span>
-                <span className="wallet-crypto">0.5 USDT</span>
-              </div>
-            </motion.div>
+            {isAuthenticated && user && (
+              <Link
+                to="/wallet"
+                onClick={() => setIsMobileMenuOpen(false)}
+                style={{ textDecoration: 'none' }}
+              >
+                <motion.div 
+                  className="wallet-display" 
+                  whileHover={{ scale: 1.05 }}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '10px',
+                    padding: '8px 14px',
+                    background: 'rgba(0, 217, 255, 0.1)',
+                    borderRadius: '8px',
+                    border: '1px solid rgba(0, 217, 255, 0.3)'
+                  }}
+                >
+                  <Wallet size={20} style={{ color: 'var(--ps-electric)' }} />
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    <span style={{ fontSize: '13px', fontWeight: 700, color: '#fff', whiteSpace: 'nowrap' }}>
+                      <span style={{ fontSize: '10px', opacity: 0.7, marginRight: '4px' }}>IRT</span>
+                      {formatCompactBalance(walletInfo.walletBalance)}
+                    </span>
+                    <span style={{ fontSize: '11px', fontWeight: 600, color: 'rgba(255,255,255,0.7)', whiteSpace: 'nowrap' }}>
+                      <span style={{ fontSize: '9px', opacity: 0.7, marginRight: '4px' }}>USDT</span>
+                      {formatCompactBalance(walletInfo.usdtBalance)}
+                    </span>
+                  </div>
+                </motion.div>
+              </Link>
+            )}
 
             <div className="language-selector">
               <Globe size={18} />
@@ -190,25 +257,27 @@ const Navbar = () => {
                 </Link>
               ))}
 
-              {/* Admin link in mobile menu */}
-              {isAuthenticated && user?.role === 'ADMIN' && (
+              {/* Wallet link in mobile menu */}
+              {isAuthenticated && user && (
                 <Link
-                  to="/admin"
-                  className="mobile-login-btn"
+                  to="/wallet"
+                  className="mobile-nav-link"
                   onClick={() => setIsMobileMenuOpen(false)}
                 >
-                  <span>Admin</span>
+                  <Wallet size={24} />
+                  <span>Wallet: {formatCompactBalance(walletInfo.walletBalance)} IRT / {formatCompactBalance(walletInfo.usdtBalance)} USDT</span>
                 </Link>
               )}
 
-              <div className="mobile-menu-footer">
-                <div className="mobile-wallet">
-                  <Wallet size={24} />
-                  <div>
-                    <div>$1,234</div>
-                    <div className="mobile-crypto">0.5 USDT</div>
-                  </div>
+              {/* Admin links in mobile menu */}
+              {isAuthenticated && user?.role === 'ADMIN' && (
+                <div style={{ display: 'flex', gap: 8, padding: 8 }}>
+                  <Link to="/admin" className="mobile-login-btn" onClick={() => setIsMobileMenuOpen(false)}>Tournaments</Link>
+                  <Link to="/admin/transactions" className="mobile-login-btn" onClick={() => setIsMobileMenuOpen(false)}>Transactions</Link>
                 </div>
+              )}
+
+              <div className="mobile-menu-footer">
 
                 {!isAuthenticated ? (
                   <div style={{ display: 'flex', gap: 10 }}>

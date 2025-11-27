@@ -24,7 +24,9 @@ async function _refreshAccess(refreshToken) {
   const candidates = [
     'refreshAuth',
     'exchangeRefreshToken',
+    'exchangeRefreshTokenForAuthTokens',
     'getAccessTokenFromRefreshToken',
+    'exchangeAccessCodeForAuthTokens',
     // some modules expose an `oauth` namespace
     ['oauth', 'refreshToken']
   ];

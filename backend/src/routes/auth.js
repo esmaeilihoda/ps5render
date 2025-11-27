@@ -60,6 +60,8 @@ const emailL = email.toLowerCase();
 
 router.post('/login', async (req, res) => {
 try {
+// Helpful debug log for development: show incoming login requests
+console.log('POST /api/auth/login received. body=', req.body);
 const parsed = LoginSchema.safeParse(req.body);
 if (!parsed.success) {
 const errors = parsed.error.flatten().fieldErrors;

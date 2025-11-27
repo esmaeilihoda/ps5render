@@ -6,24 +6,20 @@ node_modules/
 .env.local
 .env.*.local
 
-# Prisma
-/generated/prisma
+# Build outputs
+dist/
+build/
+.vite/
 
 # Logs
 logs/
 *.log
 npm-debug.log*
 
-# Test files
-*.test.js
-*.test.mjs
-psn_*.json
-
-# Database
-*.sqlite
-*.sqlite3
-*.db
-
 # IDE
 .vscode/
 .idea/
+
+# OS
+.DS_Store
+Thumbs.db

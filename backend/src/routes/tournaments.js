@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { prisma } from '../lib/prisma.js';
+import { requireAuth } from '../middleware/auth.js';
 
 const router = Router();
 
@@ -99,6 +100,73 @@ router.get('/:id', async (req, res) => {
 });
 
 export default router;
+
+// POST /api/tournaments/:id/join - authenticated users join a tournament
+router.post('/:id/join', requireAuth, async (req, res) => {
+  try {
+    const tournamentId = req.params.id;
+    const userId = req.user.id;
+
+    // Ensure tournament exists and is PUBLISHED
+    const tournament = await prisma.tournament.findUnique({ where: { id: tournamentId } });
+    if (!tournament) return res.status(404).json({ success: false, message: 'Tournament not found' });
+    if (tournament.status !== 'PUBLISHED') return res.status(400).json({ success: false, message: 'Tournament not open for joining' });
+
+    // Multi-currency join logic
+    const currency = tournament.currency || 'TOMAN';
+    const entryFee = Number(tournament.entryFee) || 0;
+    const user = await prisma.user.findUnique({ where: { id: userId } });
+    if (!user) return res.status(404).json({ success: false, message: 'User not found' });
+
+    let sufficient = false;
+    if (currency === 'TOMAN') {
+      sufficient = Number(user.balanceToman) >= entryFee;
+    } else if (currency === 'USDT') {
+      sufficient = Number(user.balanceUsdt) >= entryFee;
+    } else {
+      return res.status(400).json({ success: false, message: 'Unsupported currency' });
+    }
+    if (!sufficient) {
+      return res.status(400).json({ success: false, message: 'Insufficient funds' });
+    }
+
+    // Deduct funds and create transaction
+    const updateData = currency === 'TOMAN'
+      ? { balanceToman: { decrement: entryFee } }
+      : { balanceUsdt: { decrement: entryFee } };
+
+    await prisma.user.update({
+      where: { id: userId },
+      data: updateData,
+    });
+
+    await prisma.transaction.create({
+      data: {
+        userId,
+        amount: entryFee,
+        currency,
+        gateway: 'INTERNAL',
+        status: 'SUCCESS',
+        type: 'ENTRY_FEE',
+        description: `Tournament entry fee for ${tournament.title}`,
+      },
+    });
+
+    // Check if participant already exists
+    const existing = await prisma.participant.findFirst({ where: { tournamentId, userId } });
+    if (existing) return res.status(200).json({ success: true, participant: existing });
+
+    // Create participant (default status PENDING)
+    const participant = await prisma.participant.create({
+      data: { tournamentId, userId }
+    });
+
+    res.status(201).json({ success: true, participant });
+  } catch (err) {
+    console.error('Join tournament error', err);
+    res.status(500).json({ success: false, message: 'Server error' });
+  }
+});
 
 /* 
  * STATUS MAPPING:

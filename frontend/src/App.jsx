@@ -9,9 +9,13 @@ import LeaderboardPage from './pages/LeaderboardPage';
 import ProfilePage from './pages/ProfilePage';
 import SignUpPage from './pages/SignUpPage';
 import LoginPage from './pages/LoginPage';
+import WalletPage from './pages/WalletPage';
+import TournamentDetailsPage from './pages/TournamentDetailsPage';
+import GameHubPage from './pages/GameHubPage';
 import ProtectedRoute from './components/ProtectedRoute';
 import AdminRoute from './components/AdminRoute';           // ✅ Correct import
 import AdminTournaments from './pages/admin/AdminTournaments'; // ✅ Admin page
+import AdminTransactions from './pages/admin/AdminTransactions';
 
 function App() {
   return (
@@ -22,11 +26,13 @@ function App() {
           <Routes>
             <Route path="/" element={<HomePage />} />
             <Route path="/tournaments" element={<TournamentsPage />} />
+            <Route path="/tournaments/:id" element={<TournamentDetailsPage />} />
+            <Route path="/games/:gameId" element={<GameHubPage />} />
             <Route path="/leaderboard" element={<LeaderboardPage />} />
             <Route path="/signup" element={<SignUpPage />} />
             <Route path="/login" element={<LoginPage />} />
 
-            {/* Protected user route */}
+            {/* Protected user routes */}
             <Route
               path="/profile"
               element={
@@ -36,12 +42,30 @@ function App() {
               }
             />
 
-            {/* ✅ New Admin route */}
+            <Route
+              path="/wallet"
+              element={
+                <ProtectedRoute>
+                  <WalletPage />
+                </ProtectedRoute>
+              }
+            />
+
+            {/* Admin routes */}
             <Route
               path="/admin"
               element={
                 <AdminRoute>
                   <AdminTournaments />
+                </AdminRoute>
+              }
+            />
+
+            <Route
+              path="/admin/transactions"
+              element={
+                <AdminRoute>
+                  <AdminTransactions />
                 </AdminRoute>
               }
             />

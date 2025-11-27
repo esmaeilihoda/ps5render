@@ -121,3 +121,85 @@ res.json({ success: true, tournament: updated });
 });
 
 export default router;
+
+// Matches management (admin-only)
+// Create a match: POST /api/admin/tournaments/:id/matches
+router.post('/:id/matches', async (req, res) => {
+  try {
+    const tournamentId = req.params.id;
+    const { player1Id, player2Id, round = 1, psnMatchId } = req.body || {};
+
+    // simple validation
+    if (!player1Id || !player2Id) return res.status(400).json({ success: false, message: 'player1Id and player2Id required' });
+
+    // ensure participants belong to tournament
+    const p1 = await prisma.participant.findUnique({ where: { id: player1Id } });
+    const p2 = await prisma.participant.findUnique({ where: { id: player2Id } });
+    if (!p1 || p1.tournamentId !== tournamentId) return res.status(400).json({ success: false, message: 'player1 invalid' });
+    if (!p2 || p2.tournamentId !== tournamentId) return res.status(400).json({ success: false, message: 'player2 invalid' });
+
+    const match = await prisma.match.create({
+      data: {
+        tournamentId,
+        player1Id,
+        player2Id,
+        round: Number(round) || 1,
+        psnMatchId: psnMatchId || null,
+      }
+    });
+
+    res.status(201).json({ success: true, match });
+  } catch (err) {
+    console.error('Create match error', err);
+    res.status(500).json({ success: false, message: 'Server error' });
+  }
+});
+
+// Update a match: PUT /api/admin/tournaments/:id/matches/:matchId
+router.put('/:id/matches/:matchId', async (req, res) => {
+  try {
+    const tournamentId = req.params.id;
+    const matchId = req.params.matchId;
+    const { score1, score2, status, psnMatchId, round } = req.body || {};
+
+    const existing = await prisma.match.findUnique({ where: { id: matchId } });
+    if (!existing || existing.tournamentId !== tournamentId) return res.status(404).json({ success: false, message: 'Match not found' });
+
+    const data = {};
+    if (typeof score1 !== 'undefined') data.score1 = score1 === null ? null : Number(score1);
+    if (typeof score2 !== 'undefined') data.score2 = score2 === null ? null : Number(score2);
+    if (status) data.status = status;
+    if (typeof psnMatchId !== 'undefined') data.psnMatchId = psnMatchId;
+    if (typeof round !== 'undefined') data.round = Number(round);
+
+    // compute winner if status is COMPLETED or both scores provided
+    let winnerId = existing.winnerId;
+    const newScore1 = typeof data.score1 !== 'undefined' ? data.score1 : existing.score1;
+    const newScore2 = typeof data.score2 !== 'undefined' ? data.score2 : existing.score2;
+    const newStatus = data.status || existing.status;
+    if (newStatus === 'COMPLETED' && typeof newScore1 === 'number' && typeof newScore2 === 'number') {
+      if (newScore1 > newScore2) winnerId = existing.player1Id;
+      else if (newScore2 > newScore1) winnerId = existing.player2Id;
+      else winnerId = null; // draw
+      data.winnerId = winnerId;
+    }
+
+    const updated = await prisma.match.update({ where: { id: matchId }, data });
+    res.json({ success: true, match: updated });
+  } catch (err) {
+    console.error('Update match error', err);
+    res.status(500).json({ success: false, message: 'Server error' });
+  }
+});
+
+// List matches for a tournament
+router.get('/:id/matches', async (req, res) => {
+  try {
+    const tournamentId = req.params.id;
+    const matches = await prisma.match.findMany({ where: { tournamentId }, orderBy: { round: 'asc' } });
+    res.json({ success: true, matches });
+  } catch (err) {
+    console.error('List matches error', err);
+    res.status(500).json({ success: false, message: 'Server error' });
+  }
+});

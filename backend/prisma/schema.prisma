@@ -1,59 +1,164 @@
 generator client {
-provider = "prisma-client-js"
+  provider = "prisma-client-js"
 }
 
 datasource db {
-provider = "postgresql"
-url = env("DATABASE_URL")
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
 }
 
 enum Role {
-USER
-ADMIN
+  USER
+  ADMIN
 }
 
 enum TournamentStatus {
-DRAFT
-PUBLISHED
-COMPLETED
-CANCELED
+  DRAFT
+  PUBLISHED
+  COMPLETED
+  CANCELED
 }
 
 model User {
-id String @id @default(cuid())
-email String @unique
-name String
-psnId String @unique
-// PlayStation Network linking
-// - psnRefreshToken: long sensitive string stored securely (optional)
-psnRefreshToken String? @db.Text
-isPsnVerified Boolean @default(false)
-passwordHash String
-role Role @default(USER)
-emailVerified DateTime?
-createdAt DateTime @default(now())
-updatedAt DateTime @updatedAt
+  id              String    @id @default(cuid())
+  email           String    @unique
+  name            String
+  psnId           String    @unique
+  // PlayStation Network linking
+  // - psnRefreshToken: long sensitive string stored securely (optional)
+  psnRefreshToken String?   @db.Text
+  isPsnVerified   Boolean   @default(false)
+  passwordHash    String
+  role            Role      @default(USER)
+  emailVerified   DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
 
-// Admin-created tournaments
-createdTournaments Tournament[]
+  // Admin-created tournaments
+  createdTournaments Tournament[]
+  // Tournament participations
+  participants       Participant[]
+  // Wallet balance (in smallest currency unit, e.g., Toman or cents). Use BigInt for large values.
+  walletBalance      BigInt    @default(0)
+  // Preferred: Toman balance (transitioning from walletBalance)
+  balanceToman       BigInt    @default(0)
+  // USDT balance (stored as smallest unit, e.g., cents for USD equivalent)
+  balanceUsdt        BigInt    @default(0)
+  // Transactions for wallet operations
+  transactions       Transaction[]
 }
 
 model Tournament {
-id String @id @default(cuid())
-title String
-game String
-description String?
-rules String?
-imageUrl String?
-entryFee Int @default(0) // in USD (integer) for now
-prizePool Int @default(0) // in USD (integer) for now
-maxPlayers Int
-startAt DateTime
-status TournamentStatus @default(DRAFT)
+  id          String           @id @default(cuid())
+  title       String
+  game        String
+  description String?
+  rules       String?
+  imageUrl    String?
+  entryFee    Int              @default(0) // in USD (integer) for now
+  prizePool   Int              @default(0) // in USD (integer) for now
+  maxPlayers  Int
+  startAt     DateTime
+  status      TournamentStatus @default(DRAFT)
 
-createdById String
-createdBy User @relation(fields: [createdById], references: [id])
+  createdById String
+  createdBy   User   @relation(fields: [createdById], references: [id])
 
-createdAt DateTime @default(now())
-updatedAt DateTime @updatedAt
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  // Participants and matches
+  participants Participant[]
+  matches      Match[]
+}
+
+// Participants link users to tournaments
+model Participant {
+  id           String            @id @default(cuid())
+  user         User              @relation(fields: [userId], references: [id])
+  userId       String
+  tournament   Tournament        @relation(fields: [tournamentId], references: [id])
+  tournamentId String
+  joinedAt     DateTime          @default(now())
+  status       ParticipantStatus @default(PENDING)
+
+  // Matches relations
+  matchesAsPlayer1 Match[] @relation("player1")
+  matchesAsPlayer2 Match[] @relation("player2")
+  matchesWon       Match[] @relation("winner")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tournamentId])
+  @@index([userId])
+}
+
+enum ParticipantStatus {
+  APPROVED
+  PENDING
+  REJECTED
+  LEFT
+}
+
+model Match {
+  id           String     @id @default(cuid())
+  tournament   Tournament @relation(fields: [tournamentId], references: [id])
+  tournamentId String
+
+  player1   Participant? @relation("player1", fields: [player1Id], references: [id])
+  player1Id String?
+
+  player2   Participant? @relation("player2", fields: [player2Id], references: [id])
+  player2Id String?
+
+  score1 Int?
+  score2 Int?
+
+  status MatchStatus @default(PENDING)
+
+  winner   Participant? @relation("winner", fields: [winnerId], references: [id])
+  winnerId String?
+
+  psnMatchId String?
+  round      Int     @default(1)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tournamentId])
+  @@index([player1Id])
+  @@index([player2Id])
+  @@index([winnerId])
+}
+
+enum TransactionStatus {
+  PENDING
+  SUCCESS
+  FAILED
+  CANCELED
+  REFUNDED
+}
+
+model Transaction {
+  id         String            @id @default(cuid())
+  user       User              @relation(fields: [userId], references: [id])
+  userId     String
+  amount     BigInt
+  type       String
+  status     TransactionStatus @default(PENDING)
+  gateway    String?
+  authority  String?
+  metadata   Json?
+  createdAt  DateTime          @default(now())
+  updatedAt  DateTime          @updatedAt
+
+  @@index([userId])
+  @@index([authority])
+}
+
+enum MatchStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  DISPUTED
 }

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { api } from '../../services/api';
+import { GAMES_CONFIG } from '../../data/games';
 import '../../styles/SignUpPage.css';
 
 // Convert Date → "YYYY-MM-DDTHH:mm" for <input type="datetime-local">
@@ -11,7 +12,9 @@ function toLocalInputValue(d) {
 
 const emptyForm = {
   title: '',
-  game: 'EA FC 25',
+  gameSlug: '',
+  game: '',
+  mode: '',
   imageUrl: '',
   entryFee: 0,
   prizePool: 0,
@@ -20,6 +23,7 @@ const emptyForm = {
   description: '',
   rules: '',
   status: 'DRAFT',
+  currency: 'TOMAN', // NEW: currency field
 };
 
 export default function AdminTournaments() {
@@ -34,6 +38,12 @@ export default function AdminTournaments() {
 
   const filtered = useMemo(() => items, [items]);
   const isEditing = !!editId;
+
+  // Get available modes based on selected game
+  const availableModes = useMemo(() => {
+    if (!form.gameSlug || !GAMES_CONFIG[form.gameSlug]) return [];
+    return GAMES_CONFIG[form.gameSlug].modes || [];
+  }, [form.gameSlug]);
 
   async function loadList() {
     setLoading(true);
@@ -53,7 +63,38 @@ export default function AdminTournaments() {
   }, []); // initial load
 
   function update(field, value) {
-    setForm((prev) => ({ ...prev, [field]: value }));
+    setForm((prev) => {
+      const next = { ...prev, [field]: value };
+
+      // When game changes, reset mode and auto-fill game field
+      if (field === 'gameSlug') {
+        const gameConfig = GAMES_CONFIG[value];
+        if (gameConfig) {
+          next.game = gameConfig.title;
+          next.mode = '';
+          next.description = gameConfig.description || '';
+          next.rules = gameConfig.rules || '';
+        }
+      }
+
+      // When mode changes, auto-update title and description
+      if (field === 'mode' && value && form.gameSlug) {
+        const gameConfig = GAMES_CONFIG[form.gameSlug];
+        const modeObj = gameConfig.modes.find(m => m.name === value);
+        if (modeObj) {
+          next.title = `${gameConfig.title} - ${value}`;
+          next.description = `${gameConfig.description}\n\nTournament Format: ${modeObj.desc}`;
+        }
+      }
+
+      // When currency changes, reset entryFee/prizePool
+      if (field === 'currency') {
+        next.entryFee = 0;
+        next.prizePool = 0;
+      }
+
+      return next;
+    });
   }
 
   function reset() {
@@ -66,11 +107,22 @@ export default function AdminTournaments() {
   }
 
   function startEdit(item) {
+    // Find matching game slug from title
+    let matchedSlug = '';
+    for (const [slug, config] of Object.entries(GAMES_CONFIG)) {
+      if (item.game && item.game.includes(config.title)) {
+        matchedSlug = slug;
+        break;
+      }
+    }
+
     setEditId(item.id);
     setForm({
       id: item.id,
       title: item.title || '',
+      gameSlug: matchedSlug,
       game: item.game || '',
+      mode: '', // mode is embedded in title, so leave empty for manual edit
       imageUrl: item.imageUrl || '',
       entryFee: item.entryFee || 0,
       prizePool: item.prizePool || 0,
@@ -91,17 +143,19 @@ export default function AdminTournaments() {
       if (!form.title?.trim()) throw new Error('Title is required');
       if (!form.game?.trim()) throw new Error('Game is required');
       if (!form.startAt) throw new Error('Start date/time is required');
+
       const payload = {
         title: form.title.trim(),
         game: form.game.trim(),
         description: form.description?.trim() || '',
         rules: form.rules?.trim() || '',
-        // Send ISO string (Zod will parse)
+        imageUrl: form.imageUrl?.trim() || null,
         startAt: new Date(form.startAt).toISOString(),
-        entryFee: Number(form.entryFee ?? 0),
-        prizePool: Number(form.prizePool ?? 0),
+        entryFee: form.currency === 'USDT' ? Number(form.entryFee) : parseInt(form.entryFee, 10),
+        prizePool: form.currency === 'USDT' ? Number(form.prizePool) : parseInt(form.prizePool, 10),
         maxPlayers: Math.max(2, parseInt(form.maxPlayers, 10) || 16),
         status: form.status || 'DRAFT',
+        currency: form.currency,
       };
 
       if (isEditing) {
@@ -156,20 +210,53 @@ export default function AdminTournaments() {
         {success && <div className="alert alert-success">{success}</div>}
 
         <form className="form-grid" onSubmit={onSubmit} style={{ marginBottom: 20 }}>
-          <div>
-            <label className="label">Title</label>
-            <input 
-              className="input" 
-              value={form.title} 
-              onChange={e => update('title', e.target.value)} 
-              required 
-            />
-          </div>
+          {/* Game Selection Dropdown */}
           <div>
             <label className="label">Game</label>
-            <input 
-              className="input" 
-              value={form.game} 
+            <select
+              className="input"
+              value={form.gameSlug}
+              onChange={e => update('gameSlug', e.target.value)}
+              required
+              style={{ cursor: 'pointer' }}
+            >
+              <option value="">-- Select Game --</option>
+              {Object.entries(GAMES_CONFIG).map(([slug, config]) => (
+                <option key={slug} value={slug}>
+                  {config.title}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Mode Selection Dropdown (conditional) */}
+          {form.gameSlug && availableModes.length > 0 && (
+            <div>
+              <label className="label">Tournament Format</label>
+              <select
+                className="input"
+                value={form.mode}
+                onChange={e => update('mode', e.target.value)}
+                style={{ cursor: 'pointer' }}
+              >
+                <option value="">-- Select Format --</option>
+                {availableModes.map((mode) => (
+                  <option key={mode.name} value={mode.name}>
+                    {mode.name} - {mode.desc}
+                  </option>
+                ))}
+              </select>
+              <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.6)', marginTop: 6 }}>
+                Selecting a format will auto-fill the title and description
+              </div>
+            </div>
+          )}
+
+          <div>
+            <label className="label">Title</label>
+            <input
+              className="input"
+              value={form.title} 
               onChange={e => update('game', e.target.value)} 
               required 
             />
@@ -178,43 +265,91 @@ export default function AdminTournaments() {
             <label className="label">Image URL</label>
             <input className="input" value={form.imageUrl} onChange={e => update('imageUrl', e.target.value)} />
           </div>
+
+          {/* Currency Selection */}
           <div>
-            <label className="label">Entry Fee (USD)</label>
-            <input className="input" type="number" value={form.entryFee} onChange={e => update('entryFee', e.target.value)} min="0" />
+            <label className="label">Currency</label>
+            <select
+              className="input"
+              value={form.currency}
+              onChange={e => update('currency', e.target.value)}
+              required
+              style={{ cursor: 'pointer' }}
+            >
+              <option value="TOMAN">Toman</option>
+              <option value="USDT">USDT (Crypto)</option>
+            </select>
           </div>
+
           <div>
-            <label className="label">Prize Pool (USD)</label>
-            <input className="input" type="number" value={form.prizePool} onChange={e => update('prizePool', e.target.value)} min="0" />
-          </div>
-          <div>
-            <label className="label">Max Players</label>
-            <input 
-              className="input" 
-              type="number" 
-              value={form.maxPlayers} 
-              onChange={e => update('maxPlayers', e.target.value)} 
-              min="2" 
-              required 
+            <label className="label">Entry Fee ({form.currency})</label>
+            <input
+              className="input"
+              type={form.currency === 'USDT' ? 'number' : 'number'}
+              step={form.currency === 'USDT' ? '0.0001' : '1'}
+              min="0"
+              value={form.entryFee}
+              onChange={e => update('entryFee', e.target.value)}
+              required
             />
           </div>
+
+          <div>
+            <label className="label">Prize Pool ({form.currency})</label>
+            <input
+              className="input"
+              type={form.currency === 'USDT' ? 'number' : 'number'}
+              step={form.currency === 'USDT' ? '0.0001' : '1'}
+              min="0"
+              value={form.prizePool}
+              onChange={e => update('prizePool', e.target.value)}
+              required
+            />
+          </div>
+
+          <div>
+            <label className="label">Max Players</label>
+            <input
+              className="input"
+              type="number"
+              value={form.maxPlayers}
+              onChange={e => update('maxPlayers', e.target.value)}
+              min="2"
+              required
+            />
+          </div>
+
           <div>
             <label className="label">Start at</label>
-            <input 
-              className="input" 
-              type="datetime-local" 
-              value={form.startAt} 
-              onChange={e => update('startAt', e.target.value)} 
-              required 
+            <input
+              className="input"
+              type="datetime-local"
+              value={form.startAt}
+              onChange={e => update('startAt', e.target.value)}
+              required
             />
           </div>
 
           <div style={{ gridColumn: '1 / -1' }}>
             <label className="label">Description</label>
-            <textarea className="input" rows={3} value={form.description} onChange={e => update('description', e.target.value)} />
+            <textarea
+              className="input"
+              rows={4}
+              value={form.description}
+              onChange={e => update('description', e.target.value)}
+              placeholder="Auto-filled from game config"
+            />
           </div>
+
           <div style={{ gridColumn: '1 / -1' }}>
             <label className="label">Rules</label>
-            <textarea className="input" rows={4} value={form.rules} onChange={e => update('rules', e.target.value)} />
+            <textarea
+              className="input"
+              rows={5}
+              value={form.rules}
+              onChange={e => update('rules', e.target.value)}
+              placeholder="Auto-filled from game config"
+            />
           </div>
 
           <div style={{ gridColumn: '1 / -1', display: 'flex', gap: 10 }}>

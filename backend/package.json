@@ -5,12 +5,14 @@
   "scripts": {
     "dev": "nodemon src/server.js",
     "start": "node src/server.js",
+    "test": "node --test tests/wallet.node.test.mjs",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev --name init",
     "prisma:studio": "prisma studio"
   },
   "dependencies": {
     "@prisma/client": "^6.19.0",
+    "axios": "^1.6.5",
     "bcryptjs": "^2.4.3",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
@@ -22,6 +24,8 @@
   },
   "devDependencies": {
     "nodemon": "^3.1.7",
-    "prisma": "^6.19.0"
+    "prisma": "^6.19.0",
+    "supertest": "^6.3.3"
   }
+  
 }

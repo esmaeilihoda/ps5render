@@ -12,9 +12,11 @@ import {
   DollarSign,
   ChevronRight,
   Play,
-  Star
+  Star,
+  Instagram
 } from 'lucide-react';
 import { useLanguage } from '../contexts/LanguageContext';
+import api from '../services/api';
 import Navbar from '../components/Navbar';
 import '../styles/HomePage.css';
 
@@ -23,47 +25,12 @@ const HomePage = () => {
   const { t } = useLanguage();
 
   const featuredGames = [
-    { name: 'FIFA 24', players: '2.5K+', prize: '$50,000' },
-    { name: 'Call of Duty', players: '3.2K+', prize: '$75,000' },
-    { name: 'NBA 2K24', players: '1.8K+', prize: '$35,000' },
-    { name: 'Mortal Kombat', players: '1.2K+', prize: '$25,000' }
+    { slug: 'fc-26', name: 'EA Sports FC 26', players: '12.5K+', prize: '$100,000' },
+    { slug: 'cod-warzone', name: 'Call of Duty: Warzone', players: '45K+', prize: '$150,000' },
+    { slug: 'battlefield-6', name: 'Battlefield 6', players: '8.2K+', prize: '$75,000' },
+    { slug: 'fortnite', name: 'Fortnite', players: '50K+', prize: '$200,000' }
   ];
-
-  const upcomingTournaments = [
-    {
-      id: 1,
-      game: 'FIFA 24 Champions',
-      date: 'Oct 25, 2025',
-      time: '18:00 UTC',
-      prize: '$50,000',
-      players: 2547,
-      maxPlayers: 3000,
-      entry: '$25',
-      status: t('home.open')
-    },
-    {
-      id: 2,
-      game: 'Warzone Battle Royale',
-      date: 'Oct 28, 2025',
-      time: '20:00 UTC',
-      prize: '$75,000',
-      players: 3104,
-      maxPlayers: 5000,
-      entry: '$35',
-      status: t('home.open')
-    },
-    {
-      id: 3,
-      game: 'NBA 2K Pro League',
-      date: 'Nov 2, 2025',
-      time: '19:00 UTC',
-      prize: '$35,000',
-      players: 1876,
-      maxPlayers: 2500,
-      entry: '$20',
-      status: t('home.open')
-    }
-  ];
+  const [upcomingTournaments, setUpcomingTournaments] = useState([]);
 
   const topPlayers = [
     { rank: 1, name: 'Shadow_King', earnings: '$127,450', wins: 48, avatar: '👑' },
@@ -86,6 +53,36 @@ const HomePage = () => {
     }, 4000);
     return () => clearInterval(interval);
   }, [featuredGames.length]);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await api.tournaments.list();
+        // api.tournaments.list returns an array or object; handle both
+        const items = Array.isArray(res) ? res : (res.items || res || []);
+        const filtered = (items || [])
+          .filter((t) => t && (t.status === 'PUBLISHED' || t.status === 'IN_PROGRESS' || t.status === 'OPEN'))
+          .sort((a, b) => new Date(a.startAt || a.createdAt || 0) - new Date(b.startAt || b.createdAt || 0))
+          .slice(0, 3)
+          .map((t) => ({
+            id: t.id,
+            title: t.title || t.name || t.game,
+            entryFee: t.entryFee ?? t.entry ?? 0,
+            prizePool: t.prizePool ?? t.prize ?? 0,
+            currentPlayers: t.currentPlayers ?? t.players ?? t.playerCount ?? 0,
+            maxPlayers: t.maxPlayers ?? t.maxPlayers ?? 0,
+            startAt: t.startAt || t.startDate || t.createdAt,
+            status: t.status || t.state || t.phase
+          }));
+        if (!cancelled) setUpcomingTournaments(filtered);
+      } catch (err) {
+        // eslint-disable-next-line no-console
+        console.error('Failed to load tournaments for HomePage', err);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
 
   return (
     <div className="home-page">
@@ -143,10 +140,10 @@ const HomePage = () => {
               <span>{t('home.browseTournaments')}</span>
               <ChevronRight size={20} />
             </Link>
-            <button className="btn-secondary">
-              <Play size={20} />
-              <span>{t('home.watchLive')}</span>
-            </button>
+            <a href="https://instagram.com/g4r_official" target="_blank" rel="noopener noreferrer" className="btn-secondary">
+              <Instagram size={20} />
+              <span>Join Community</span>
+            </a>
           </motion.div>
 
           <motion.div
@@ -218,10 +215,10 @@ const HomePage = () => {
                     <span>{game.prize}</span>
                   </div>
                 </div>
-                <button className="game-action-btn">
+                <Link to={`/games/${game.slug}`} className="game-action-btn">
                   {t('home.joinTournament')}
                   <ChevronRight size={18} />
-                </button>
+                </Link>
               </motion.div>
             ))}
           </div>
@@ -253,19 +250,19 @@ const HomePage = () => {
                     <Star size={14} />
                     <span>{tournament.status}</span>
                   </div>
-                  <div className="tournament-prize">{tournament.prize}</div>
+                  <div className="tournament-prize">{typeof tournament.prizePool === 'number' ? tournament.prizePool.toLocaleString() : tournament.prizePool}</div>
                 </div>
 
-                <h3 className="tournament-name">{tournament.game}</h3>
+                <h3 className="tournament-name">{tournament.title}</h3>
 
                 <div className="tournament-info">
                   <div className="info-item">
                     <Calendar size={16} />
-                    <span>{tournament.date}</span>
+                    <span>{tournament.startAt ? new Date(tournament.startAt).toLocaleDateString() : '—'}</span>
                   </div>
                   <div className="info-item">
                     <Users size={16} />
-                    <span>{tournament.players}/{tournament.maxPlayers}</span>
+                    <span>{tournament.currentPlayers}/{tournament.maxPlayers}</span>
                   </div>
                 </div>
 
@@ -273,22 +270,22 @@ const HomePage = () => {
                   <div className="progress-bar">
                     <div
                       className="progress-fill"
-                      style={{ width: `${(tournament.players / tournament.maxPlayers) * 100}%` }}
+                      style={{ width: `${(tournament.currentPlayers && tournament.maxPlayers) ? (tournament.currentPlayers / tournament.maxPlayers) * 100 : 0}%` }}
                     ></div>
                   </div>
                   <span className="progress-text">
-                    {Math.round((tournament.players / tournament.maxPlayers) * 100)}% {t('home.full')}
+                    {tournament.maxPlayers ? `${Math.round((tournament.currentPlayers / tournament.maxPlayers) * 100)}% ${t('home.full')}` : '—'}
                   </span>
                 </div>
 
                 <div className="tournament-footer">
                   <div className="entry-fee">
-                    {t('home.entry')}: <span>{tournament.entry}</span>
+                    {t('home.entry')}: <span>{tournament.entryFee && Number(tournament.entryFee) > 0 ? (`$${tournament.entryFee}`) : 'Free'}</span>
                   </div>
-                  <button className="join-btn">
+                  <Link to={'/tournaments/' + tournament.id} className="join-btn">
                     {t('home.joinNow')}
                     <ChevronRight size={16} />
-                  </button>
+                  </Link>
                 </div>
               </motion.div>
             ))}
@@ -349,14 +346,14 @@ const HomePage = () => {
             <h2 className="cta-title">{t('home.ctaTitle')}</h2>
             <p className="cta-description">{t('home.ctaDescription')}</p>
             <div className="cta-buttons">
-              <button className="btn-primary large">
+              <Link to="/signup" className="btn-primary large">
                 <Trophy size={24} />
                 <span>{t('home.createAccount')}</span>
-              </button>
-              <button className="btn-secondary large">
+              </Link>
+              <Link to="/tournaments" className="btn-secondary large">
                 <Gamepad2 size={24} />
-                <span>{t('home.learnMore')}</span>
-              </button>
+                <span>Browse Games</span>
+              </Link>
             </div>
           </motion.div>
         </div>
@@ -373,23 +370,23 @@ const HomePage = () => {
           </div>
           <div className="footer-section">
             <h4>{t('home.platform')}</h4>
-            <a href="#">{t('home.tournaments')}</a>
-            <a href="#">{t('home.fullLeaderboard')}</a>
-            <a href="#">{t('home.liveStreams')}</a>
-            <a href="#">{t('home.prizePool')}</a>
+            <a href="#" title="Coming Soon">{t('home.tournaments')}</a>
+            <a href="#" title="Coming Soon">{t('home.fullLeaderboard')}</a>
+            <a href="#" title="Coming Soon">{t('home.liveStreams')}</a>
+            <a href="#" title="Coming Soon">{t('home.prizePool')}</a>
           </div>
           <div className="footer-section">
             <h4>{t('home.support')}</h4>
-            <a href="#">{t('home.helpCenter')}</a>
-            <a href="#">{t('home.rules')}</a>
-            <a href="#">{t('home.faq')}</a>
-            <a href="#">{t('home.contact')}</a>
+            <a href="#" title="Coming Soon">{t('home.helpCenter')}</a>
+            <a href="#" title="Coming Soon">{t('home.rules')}</a>
+            <a href="#" title="Coming Soon">{t('home.faq')}</a>
+            <a href="#" title="Coming Soon">{t('home.contact')}</a>
           </div>
           <div className="footer-section">
             <h4>{t('home.legal')}</h4>
-            <a href="#">{t('home.terms')}</a>
-            <a href="#">{t('home.privacy')}</a>
-            <a href="#">{t('home.cookies')}</a>
+            <a href="#" title="Coming Soon">{t('home.terms')}</a>
+            <a href="#" title="Coming Soon">{t('home.privacy')}</a>
+            <a href="#" title="Coming Soon">{t('home.cookies')}</a>
           </div>
         </div>
         <div className="footer-bottom">

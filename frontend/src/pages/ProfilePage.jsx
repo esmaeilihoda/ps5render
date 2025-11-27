@@ -17,11 +17,21 @@ import {
 import Navbar from '../components/Navbar';
 import '../styles/ProfilePage.css';
 import { useAuth } from '../contexts/AuthContext';
-import api from '../services/api';
+import api, { apiGet } from '../services/api';
 
 const ProfilePage = () => {
   const [activeTab, setActiveTab] = useState('overview');
   const { user } = useAuth();
+
+  function formatBigIntString(bal) {
+    try {
+      if (bal === undefined || bal === null) return '0';
+      const s = String(bal);
+      return s.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+    } catch (e) {
+      return String(bal ?? '0');
+    }
+  }
 
   // data fetching state
   const [loading, setLoading] = useState(true);
@@ -37,16 +47,30 @@ const ProfilePage = () => {
     { id: 'transactions', label: 'Transactions', icon: DollarSign }
   ];
 
-  // Keep design static placeholders for fields we haven't wired yet
-  const userProfileStatic = {
-    avatar: '🎮',
-    level: 'Diamond',
-    rank: 42,
-    totalEarnings: '$78,450',
-    winRate: 72,
-    wins: 68,
-    losses: 27
-  };
+  const [transactions, setTransactions] = useState([]);
+
+  // Compute match stats from profilePayload.matches (if present)
+  const matchStats = React.useMemo(() => {
+    const allMatches = Array.isArray(profilePayload?.matches) ? profilePayload.matches : [];
+    const userId = user?.id;
+    const participantMatches = allMatches.filter(m => {
+      const p1UserId = m.player1?.user?.id;
+      const p2UserId = m.player2?.user?.id;
+      return (p1UserId && p1UserId === userId) || (p2UserId && p2UserId === userId);
+    });
+    const totalMatches = participantMatches.length;
+    const wins = participantMatches.filter(m => {
+      if (!m.winnerId) return false;
+      const p1 = m.player1;
+      const p2 = m.player2;
+      if (p1 && p1.user && p1.user.id === userId && m.winnerId === p1.id) return true;
+      if (p2 && p2.user && p2.user.id === userId && m.winnerId === p2.id) return true;
+      return false;
+    }).length;
+    const losses = Math.max(0, totalMatches - wins);
+    const winRate = totalMatches > 0 ? Math.round((wins / totalMatches) * 100) : 0;
+    return { totalMatches, wins, losses, winRate };
+  }, [profilePayload?.matches, user?.id]);
 
   // Effect to load profile data
   useEffect(() => {
@@ -62,6 +86,14 @@ const ProfilePage = () => {
       try {
         const data = await api.users.getUserProfile(user.id);
         if (!cancelled) setProfilePayload(data);
+
+        // Fetch wallet transactions
+        try {
+          const wallet = await apiGet('/api/wallet');
+          if (!cancelled && wallet?.transactions) setTransactions(wallet.transactions);
+        } catch (wErr) {
+          console.warn('Failed to load wallet transactions', wErr);
+        }
       } catch (err) {
         if (!cancelled) setError(err.message || 'Failed to load profile');
       } finally {
@@ -88,48 +120,19 @@ const ProfilePage = () => {
     }
   }
 
-  const walletBalances = [
-    { currency: 'USD', amount: '$1,234.50', icon: DollarSign },
-    { currency: 'Rial', amount: '۵۲,۱۰۰,۰۰۰', icon: DollarSign },
-    { currency: 'USDT', amount: '0.5432', icon: DollarSign }
-  ];
-
-  // recentTournaments will be sourced from profilePayload.tournaments when available
-
-  const recentTransactions = [
-    {
-      id: 1,
-      type: 'Prize',
-      description: 'FIFA 24 Champions - 1st Place',
-      amount: '+$5,000',
-      date: 'Oct 15, 2025',
-      status: 'completed'
-    },
-    {
-      id: 2,
-      type: 'Entry',
-      description: 'Warzone Tournament Entry',
-      amount: '-$35',
-      date: 'Oct 12, 2025',
-      status: 'completed'
-    },
-    {
-      id: 3,
-      type: 'Deposit',
-      description: 'Wallet Deposit',
-      amount: '+$500',
-      date: 'Oct 10, 2025',
-      status: 'completed'
-    },
-    {
-      id: 4,
-      type: 'Withdrawal',
-      description: 'Bank Transfer',
-      amount: '-$2,000',
-      date: 'Oct 8, 2025',
-      status: 'pending'
+  const walletBalances = (() => {
+    const wb = profilePayload?.user?.walletBalance ?? user?.walletBalance;
+    if (wb !== undefined && wb !== null) {
+      return [{ currency: 'Toman', amount: formatBigIntString(wb), icon: DollarSign }];
     }
-  ];
+    return [
+      { currency: 'USD', amount: '—', icon: DollarSign },
+      { currency: 'Rial', amount: '—', icon: DollarSign },
+      { currency: 'USDT', amount: '—', icon: DollarSign }
+    ];
+  })();
+
+  // recentTransactions are loaded into `transactions` state from the wallet API
 
   const achievements = [
     { icon: Crown, title: 'Champion', description: 'Won 50+ tournaments' },
@@ -209,17 +212,17 @@ const ProfilePage = () => {
             <div className="profile-header">
               <div className="profile-avatar-large">
                 <div className="avatar-glow-profile"></div>
-                <span>{userProfileStatic.avatar}</span>
+                <span>{publicUser?.psnId ? publicUser.psnId.charAt(0).toUpperCase() : 'P'}</span>
               </div>
               <div className="profile-info-header">
                 <h1 className="profile-name">{profilePayload?.user?.psnId || 'Player'}</h1>
                 <div className="profile-meta">
                   <div className="profile-level">
                     <Crown size={16} />
-                    <span>{userProfileStatic.level}</span>
+                    <span>{profilePayload?.user?.rankTier || 'Diamond'}</span>
                   </div>
                   <div className="profile-rank">
-                    Global Rank #{userProfileStatic.rank}
+                    Global Rank #{profilePayload?.user?.globalRank ?? '--'}
                   </div>
                 </div>
               </div>
@@ -232,7 +235,7 @@ const ProfilePage = () => {
               <div className="profile-stat-card">
                 <DollarSign size={24} className="stat-icon" />
                 <div className="stat-content">
-                  <div className="stat-value-profile">{userProfileStatic.totalEarnings}</div>
+                  <div className="stat-value-profile">{profilePayload?.user?.totalEarnings ?? '—'}</div>
                   <div className="stat-label-profile">Total Earnings</div>
                 </div>
               </div>
@@ -240,7 +243,7 @@ const ProfilePage = () => {
               <div className="profile-stat-card">
                 <Target size={24} className="stat-icon" />
                 <div className="stat-content">
-                  <div className="stat-value-profile">{userProfileStatic.winRate}%</div>
+                  <div className="stat-value-profile">{matchStats.winRate}%</div>
                   <div className="stat-label-profile">Win Rate</div>
                 </div>
               </div>
@@ -256,7 +259,7 @@ const ProfilePage = () => {
               <div className="profile-stat-card">
                 <TrendingUp size={24} className="stat-icon" />
                 <div className="stat-content">
-                  <div className="stat-value-profile">{userProfileStatic.wins}W/{userProfileStatic.losses}L</div>
+                  <div className="stat-value-profile">{matchStats.wins}W/{matchStats.losses}L</div>
                   <div className="stat-label-profile">Record</div>
                 </div>
               </div>
@@ -440,26 +443,35 @@ const ProfilePage = () => {
                   <div className="content-section">
                     <h3 className="content-title">Transaction History</h3>
                     <div className="transactions-list">
-                      {recentTransactions.map((transaction) => (
-                        <div key={transaction.id} className="transaction-card">
-                          <div className="transaction-icon">
-                            <History size={20} />
-                          </div>
-                          <div className="transaction-info">
-                            <div className="transaction-type">{transaction.type}</div>
-                            <div className="transaction-description">{transaction.description}</div>
-                            <div className="transaction-date">{transaction.date}</div>
-                          </div>
-                          <div className="transaction-right">
-                            <div className={`transaction-amount ${transaction.amount.startsWith('+') ? 'positive' : 'negative'}`}>
-                              {transaction.amount}
+                      {transactions.length === 0 ? (
+                        <div style={{ color: 'rgba(255,255,255,0.6)' }}>No transactions yet.</div>
+                      ) : (
+                        transactions.map((tx) => {
+                          const date = tx.createdAt ? new Date(tx.createdAt).toLocaleString() : '—';
+                          const amountStr = String(tx.amount ?? '0');
+                          const positive = !(amountStr.startsWith('-'));
+                          return (
+                            <div key={tx.id} className="transaction-card">
+                              <div className="transaction-icon">
+                                <History size={20} />
+                              </div>
+                              <div className="transaction-info">
+                                <div className="transaction-type">{tx.type || tx.description || 'Transaction'}</div>
+                                <div className="transaction-description">{tx.description || ''}</div>
+                                <div className="transaction-date">{date}</div>
+                              </div>
+                              <div className="transaction-right">
+                                <div className={`transaction-amount ${positive ? 'positive' : 'negative'}`}>
+                                  {positive ? '+' : ''}{formatBigIntString(amountStr)} Toman
+                                </div>
+                                <div className={`transaction-status status-${(tx.status || '').toLowerCase()}`}>
+                                  {tx.status || ''}
+                                </div>
+                              </div>
                             </div>
-                            <div className={`transaction-status status-${transaction.status}`}>
-                              {transaction.status}
-                            </div>
-                          </div>
-                        </div>
-                      ))}
+                          );
+                        })
+                      )}
                     </div>
                   </div>
                 </motion.div>

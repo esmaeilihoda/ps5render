@@ -12,39 +12,93 @@ function _extractRefreshToken(obj) {
 }
 
 async function _exchangeNpsso(npsso) {
-  const candidates = [
-    'getRefreshTokenFromNpsso',
-    'exchangeNpsso',
-    'exchangeNpssoForRefreshToken',
-    'getRefreshToken',
-    ['oauth', 'getRefreshTokenFromNpsso'],
-    ['oauth', 'exchangeNpsso']
-  ];
+  // Newer versions of `psn-api` expose a code flow: exchangeNpssoForAccessCode -> exchangeAccessCodeForAuthTokens
+  // Try those first when available.
+  try {
+    if (typeof psn.exchangeNpssoForAccessCode === 'function') {
+      try {
+        const codeRes = await psn.exchangeNpssoForAccessCode(npsso);
+        const code = codeRes?.code || codeRes?.accessCode || codeRes || null;
+        if (code) {
+          if (typeof psn.exchangeAccessCodeForAuthTokens === 'function') {
+            const tokens = await psn.exchangeAccessCodeForAuthTokens(code);
+            const token = _extractRefreshToken(tokens);
+            if (token) return { token, raw: tokens };
+          }
+          if (typeof psn.exchangeCodeForAccessToken === 'function') {
+            const access = await psn.exchangeCodeForAccessToken(code);
+            const token = _extractRefreshToken(access);
+            if (token) return { token, raw: access };
+          }
+        }
+      } catch (err) {
+        // continue to fallback
+        // eslint-disable-next-line no-console
+        console.warn('psn users route: exchangeNpssoForAccessCode flow failed:', err?.message || err);
+      }
+    }
 
-  let lastError = null;
-  for (const c of candidates) {
-    try {
-      if (Array.isArray(c)) {
-        const [ns, fn] = c;
-        if (psn[ns] && typeof psn[ns][fn] === 'function') {
-          const res = await psn[ns][fn](npsso);
+    if (typeof psn.exchangeNpssoForCode === 'function') {
+      try {
+        const codeRes = await psn.exchangeNpssoForCode(npsso);
+        const code = codeRes?.code || codeRes || null;
+        if (code) {
+          if (typeof psn.exchangeAccessCodeForAuthTokens === 'function') {
+            const tokens = await psn.exchangeAccessCodeForAuthTokens(code);
+            const token = _extractRefreshToken(tokens);
+            if (token) return { token, raw: tokens };
+          }
+          if (typeof psn.exchangeCodeForAccessToken === 'function') {
+            const access = await psn.exchangeCodeForAccessToken(code);
+            const token = _extractRefreshToken(access);
+            if (token) return { token, raw: access };
+          }
+        }
+      } catch (err) {
+        // continue to fallback
+        // eslint-disable-next-line no-console
+        console.warn('psn users route: exchangeNpssoForCode flow failed:', err?.message || err);
+      }
+    }
+
+    // Fallback to older/simpler helper names if present
+    const candidates = [
+      'getRefreshTokenFromNpsso',
+      'exchangeNpsso',
+      'exchangeNpssoForRefreshToken',
+      'getRefreshToken',
+      ['oauth', 'getRefreshTokenFromNpsso'],
+      ['oauth', 'exchangeNpsso']
+    ];
+
+    let lastError = null;
+    for (const c of candidates) {
+      try {
+        if (Array.isArray(c)) {
+          const [ns, fn] = c;
+          if (psn[ns] && typeof psn[ns][fn] === 'function') {
+            const res = await psn[ns][fn](npsso);
+            const token = _extractRefreshToken(res);
+            if (token) return { token, raw: res };
+          }
+        } else if (typeof psn[c] === 'function') {
+          const res = await psn[c](npsso);
           const token = _extractRefreshToken(res);
           if (token) return { token, raw: res };
         }
-      } else if (typeof psn[c] === 'function') {
-        const res = await psn[c](npsso);
-        const token = _extractRefreshToken(res);
-        if (token) return { token, raw: res };
+      } catch (err) {
+        lastError = err;
+        // eslint-disable-next-line no-console
+        console.warn(`psn users route: candidate ${Array.isArray(c) ? c.join('.') : c} failed:`, err?.message || err);
       }
-    } catch (err) {
-      lastError = err;
-      // eslint-disable-next-line no-console
-      console.warn(`psn users route: candidate ${Array.isArray(c) ? c.join('.') : c} failed:`, err?.message || err);
     }
-  }
 
-  throw lastError || new Error('psn-api: no supported npsso exchange method found');
+    throw lastError || new Error('psn-api: no supported npsso exchange method found');
+  } catch (err) {
+    throw err;
+  }
 }
+
 
 function _extractPsnOnlineId(profile) {
   if (!profile) return null;
@@ -59,6 +113,20 @@ function _extractPsnOnlineId(profile) {
     (profile.user && (profile.user.onlineId || profile.user.accountId)) ||
     null
   );
+}
+
+function _extractOnlineIdFromIdToken(idToken) {
+  if (!idToken || typeof idToken !== 'string') return null;
+  try {
+    const parts = idToken.split('.');
+    if (parts.length < 2) return null;
+    const payload = JSON.parse(Buffer.from(parts[1], 'base64').toString('utf8'));
+    return payload.online_id || payload.onlineId || payload.profileName || payload.username || payload.sub || null;
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.warn('Failed to decode idToken payload', err?.message || err);
+    return null;
+  }
 }
 
 /**
@@ -85,9 +153,17 @@ router.post('/link-psn', requireAuth, async (req, res) => {
     }
 
     const profile = profileResult.profile;
-    const onlineId = _extractPsnOnlineId(profile);
+    let onlineId = _extractPsnOnlineId(profile);
+    // If profile didn't include an onlineId, try to extract it from the idToken (some psn-api responses include it there)
+    if (!onlineId && profileResult.tokens && profileResult.tokens.idToken) {
+      const extracted = _extractOnlineIdFromIdToken(profileResult.tokens.idToken);
+      if (extracted) onlineId = extracted;
+    }
     if (!onlineId) {
-      return res.status(502).json({ success: false, message: 'Unable to determine PSN Online ID from profile' });
+      // Include the raw profile and tokens in the response for local debugging
+      // eslint-disable-next-line no-console
+      console.warn('PSN profile did not contain recognizable online ID:', profile, profileResult.tokens);
+      return res.status(502).json({ success: false, message: 'Unable to determine PSN Online ID from profile', detail: { profile: profile || null, tokens: profileResult.tokens || null } });
     }
 
     // 3) Load current user from DB to compare stored psnId
@@ -109,8 +185,9 @@ router.post('/link-psn', requireAuth, async (req, res) => {
     return res.json({ success: true, message: 'PSN account linked and verified' });
   } catch (err) {
     // eslint-disable-next-line no-console
-    console.error('POST /api/users/link-psn error:', err?.message || err);
-    return res.status(500).json({ success: false, message: 'Internal server error' });
+    console.error('POST /api/users/link-psn error:', err);
+    // Include error message in response for local debugging (do not expose in production)
+    return res.status(500).json({ success: false, message: 'Internal server error', error: err?.message || String(err) });
   }
 });
 
@@ -124,8 +201,24 @@ router.get('/profile/:userId', requireAuth, async (req, res) => {
   if (!userId) return res.status(400).json({ success: false, message: 'Missing userId parameter' });
 
   try {
-    // Fetch the user (including psnRefreshToken privately)
-    const user = await prisma.user.findUnique({ where: { id: userId } });
+    // Fetch the user including participants and their matches, and created tournaments
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      include: {
+        participants: {
+          include: {
+            matchesAsPlayer1: {
+              include: { player1: { include: { user: true } }, player2: { include: { user: true } }, winner: true, tournament: true }
+            },
+            matchesAsPlayer2: {
+              include: { player1: { include: { user: true } }, player2: { include: { user: true } }, winner: true, tournament: true }
+            },
+            tournament: true
+          }
+        },
+        createdTournaments: true
+      }
+    });
     if (!user) return res.status(404).json({ success: false, message: 'User not found' });
 
     // Public user info (omit passwordHash and psnRefreshToken)
@@ -136,18 +229,11 @@ router.get('/profile/:userId', requireAuth, async (req, res) => {
       isPsnVerified: user.isPsnVerified
     };
 
-    // 1) Tournaments created by the user
-    const createdTournaments = await prisma.tournament.findMany({ where: { createdById: userId } });
+    // 1) Tournaments created by the user (from the included relation)
+    const createdTournaments = user.createdTournaments || [];
 
-    // 2) Tournaments the user participated in (if a participants relation exists)
-    let participatedTournaments = [];
-    try {
-      participatedTournaments = await prisma.tournament.findMany({ where: { participants: { some: { id: userId } } } });
-    } catch (err) {
-      // If the relation doesn't exist, skip — createdTournaments will still be returned
-      // eslint-disable-next-line no-console
-      console.warn('participants relation not present on Tournament model; skipping participatedTournaments');
-    }
+    // 2) Tournaments the user participated in (from participants relation)
+    const participatedTournaments = (user.participants || []).map(p => p.tournament).filter(Boolean);
 
     // combine and dedupe tournaments by id
     const map = new Map();
@@ -155,7 +241,28 @@ router.get('/profile/:userId', requireAuth, async (req, res) => {
     for (const t of participatedTournaments) map.set(t.id, t);
     const tournamentHistory = Array.from(map.values());
 
-    // 3) If PSN is verified, fetch PSN profile & library using stored refresh token
+    // 3) Flatten matches from participants (both matchesAsPlayer1 and matchesAsPlayer2)
+    const matchMap = new Map();
+    for (const p of (user.participants || [])) {
+      const a = Array.isArray(p.matchesAsPlayer1) ? p.matchesAsPlayer1 : [];
+      const b = Array.isArray(p.matchesAsPlayer2) ? p.matchesAsPlayer2 : [];
+      for (const m of [...a, ...b]) {
+        if (!m || !m.id) continue;
+        if (!matchMap.has(m.id)) matchMap.set(m.id, m);
+        else {
+          const existing = matchMap.get(m.id);
+          matchMap.set(m.id, { ...existing, ...m });
+        }
+      }
+    }
+    const matches = Array.from(matchMap.values()).sort((x, y) => {
+      const rx = Number(x.round || 0), ry = Number(y.round || 0);
+      if (rx !== ry) return rx - ry;
+      const ox = Number(x.matchOrder || 0), oy = Number(y.matchOrder || 0);
+      return ox - oy;
+    });
+
+    // 4) If PSN is verified, fetch PSN profile & library using stored refresh token
     let psnData = null;
     if (user.isPsnVerified && user.psnRefreshToken) {
       try {
@@ -173,7 +280,7 @@ router.get('/profile/:userId', requireAuth, async (req, res) => {
       }
     }
 
-    return res.json({ success: true, user: publicUser, tournaments: tournamentHistory, psn: psnData });
+    return res.json({ success: true, user: publicUser, tournaments: tournamentHistory, psn: psnData, matches });
   } catch (err) {
     // eslint-disable-next-line no-console
     console.error('GET /api/users/profile/:userId error:', err?.message || err);

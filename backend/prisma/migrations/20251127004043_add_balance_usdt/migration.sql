@@ -1,0 +1,3 @@
+-- AlterTable
+ALTER TABLE "User" ADD COLUMN     "balanceToman" BIGINT NOT NULL DEFAULT 0,
+ADD COLUMN     "balanceUsdt" BIGINT NOT NULL DEFAULT 0;
