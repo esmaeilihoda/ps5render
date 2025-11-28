@@ -65,7 +65,14 @@ router.post('/deposit/payment4', requireAuth, async (req, res) => {
   const callbackUrl = `${apiBase}/api/wallet/verify/payment4`;
   let paymentUrl, paymentUid;
   try {
-    const created = await payment4Service.createPayment({ amount: Number(amount), currency: 'USD', callbackUrl, callbackParams: { txId: tx.id } });
+    const created = await payment4Service.createPayment({ 
+      amount: Number(amount), 
+      currency: 'USD', 
+      callbackUrl, 
+      callbackParams: { txId: tx.id },
+      sandBox: false,
+      language: 'EN'
+    });
     paymentUrl = created.paymentUrl;
     paymentUid = created.paymentUid;
   } catch (err) {
