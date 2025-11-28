@@ -11,7 +11,7 @@ if (!API_KEY) {
 // According to Payment4 OpenAPI, required fields for create:
 // amount:number, currency:string, callbackUrl:string
 // Optional: callbackParams, webhookUrl, webhookParams, language (EN|FR|ES|AR|TR|FA), sandBox:boolean
-export async function createPayment({ amount, currency = 'USD', callbackUrl, callbackParams, sandBox, language = 'EN' }) {
+export async function createPayment({ amount, currency = 'USDT', callbackUrl, callbackParams, sandBox, language = 'EN' }) {
   const url = `${BASE_URL}/payment`;
   const headers = { 'x-api-key': API_KEY, 'Content-Type': 'application/json', Accept: 'application/json' };
 
@@ -26,13 +26,22 @@ export async function createPayment({ amount, currency = 'USD', callbackUrl, cal
     currency,
     callbackUrl,
     ...(callbackParams ? { callbackParams } : {}),
-    ...(typeof sandBox === 'boolean' ? { sandBox } : { sandBox: process.env.NODE_ENV !== 'production' }),
+    ...(typeof sandBox === 'boolean' ? { sandBox } : {}),
     language,
   };
 
-  const { data } = await axios.post(url, payload, { headers, timeout: 15000 });
+  try {
+    const { data } = await axios.post(url, payload, { headers, timeout: 15000 });
   // Response schema: { id:number, paymentUid:string, paymentUrl:string }
-  return { paymentUrl: data?.paymentUrl, paymentUid: data?.paymentUid };
+    return { paymentUrl: data?.paymentUrl, paymentUid: data?.paymentUid };
+  } catch (err) {
+    const status = err.response?.status;
+    const resp = err.response?.data;
+    const msg = typeof resp === 'object' ? JSON.stringify(resp) : (resp || err.message);
+    // eslint-disable-next-line no-console
+    console.error('Payment4 create error:', status, msg, 'payload:', JSON.stringify(payload));
+    throw new Error(msg);
+  }
 }
 
 // Verify requires: paymentUid, amount, currency
@@ -44,9 +53,18 @@ export async function verifyPayment({ paymentUid, amount, currency = 'USD' }) {
   }
   const headers = { 'x-api-key': API_KEY, 'Content-Type': 'application/json', Accept: 'application/json' };
   const payload = { paymentUid, amount: Number(amount), currency };
-  const { data } = await axios.put(url, payload, { headers, timeout: 15000 });
-  // data: { verified:boolean, paymentStatus:'PENDING'|'SUCCESS'|'EXPIRED'|'ACCEPTABLE'|'MISMATCH', amountDifference?:number }
-  return { verified: !!data?.verified, paymentStatus: data?.paymentStatus };
+  try {
+    const { data } = await axios.put(url, payload, { headers, timeout: 15000 });
+    // data: { verified:boolean, paymentStatus:'PENDING'|'SUCCESS'|'EXPIRED'|'ACCEPTABLE'|'MISMATCH', amountDifference?:number }
+    return { verified: !!data?.verified, paymentStatus: data?.paymentStatus };
+  } catch (err) {
+    const status = err.response?.status;
+    const resp = err.response?.data;
+    const msg = typeof resp === 'object' ? JSON.stringify(resp) : (resp || err.message);
+    // eslint-disable-next-line no-console
+    console.error('Payment4 verify error:', status, msg, 'payload:', JSON.stringify(payload));
+    throw new Error(msg);
+  }
 }
 
 export default {

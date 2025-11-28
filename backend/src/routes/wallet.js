@@ -67,7 +67,7 @@ router.post('/deposit/payment4', requireAuth, async (req, res) => {
   try {
     const created = await payment4Service.createPayment({ 
       amount: Number(amount), 
-      currency: 'USD', 
+      currency: 'USDT', 
       callbackUrl, 
       callbackParams: { txId: tx.id },
       sandBox: false,
