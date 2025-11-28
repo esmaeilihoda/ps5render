@@ -62,7 +62,8 @@ router.post('/deposit/payment4', requireAuth, async (req, res) => {
   // Create payment with Payment4
   const apiBase = process.env.API_BASE_URL || `http://localhost:${process.env.PORT || 5001}`;
   // Important: do NOT add query here; Payment4 appends its own query and callbackParams.
-  const callbackUrl = `${apiBase}/api/wallet/verify/payment4`;
+  // Include txId in query to ensure callback identifies the transaction even if callbackParams are not forwarded
+  const callbackUrl = `${apiBase}/api/wallet/verify/payment4?txId=${tx.id}`;
   let paymentUrl, paymentUid;
   try {
     const created = await payment4Service.createPayment({ 
@@ -91,10 +92,16 @@ router.post('/deposit/payment4', requireAuth, async (req, res) => {
   res.json({ url: paymentUrl });
 });
 
-// GET /verify/payment4 - public callback
-router.get('/verify/payment4', async (req, res) => {
+// Payment4 verify callback - support both GET and POST
+async function handlePayment4Verify(req, res) {
   try {
-    const { txId, paymentUid: paymentUidFromQuery, paymentStatus, status } = req.query;
+    // Read params from query or body (Payment4 may POST callbacks)
+    const q = req.query || {};
+    const b = (req.method === 'POST' ? (req.body || {}) : {});
+    const txId = q.txId || b.txId;
+    const paymentUidFromQuery = q.paymentUid || b.paymentUid;
+    const paymentStatus = q.paymentStatus || b.paymentStatus;
+    const status = q.status || b.status;
     console.log('Payment4 verify callback:', { txId, paymentUid: paymentUidFromQuery, paymentStatus, status });
     
     const tx = txId ? await prisma.transaction.findUnique({ where: { id: String(txId) } }) : null;
@@ -137,7 +144,10 @@ router.get('/verify/payment4', async (req, res) => {
     console.log('Redirecting (error):', redirectUrl);
     return res.redirect(redirectUrl);
   }
-});
+}
+
+router.get('/verify/payment4', handlePayment4Verify);
+router.post('/verify/payment4', handlePayment4Verify);
 
 // POST /deposit/zarrinpal (Toman deposit)
 router.post('/deposit/zarrinpal', requireAuth, async (req, res) => {
