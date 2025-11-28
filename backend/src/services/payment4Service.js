@@ -11,7 +11,7 @@ if (!API_KEY) {
 // According to Payment4 OpenAPI, required fields for create:
 // amount:number, currency:string, callbackUrl:string
 // Optional: callbackParams, webhookUrl, webhookParams, language (EN|FR|ES|AR|TR|FA), sandBox:boolean
-export async function createPayment({ amount, currency = 'USDT', callbackUrl, callbackParams, sandBox, language = 'EN' }) {
+export async function createPayment({ amount, currency = 'USD', callbackUrl, callbackParams, sandBox, language = 'EN' }) {
   const url = `${BASE_URL}/payment`;
   const headers = { 'x-api-key': API_KEY, 'Content-Type': 'application/json', Accept: 'application/json' };
 
