@@ -9,6 +9,7 @@ import tournamentsRouter from './routes/tournaments.js';
 import usersRouter from './routes/users.js';
 import matchesRouter from './routes/matches.js';
 import walletRouter from './routes/wallet.js';
+import otpRouter from './routes/otp.js';
 
 const app = express();
 const PORT = process.env.PORT || 5001;
@@ -23,6 +24,7 @@ app.use('/api/tournaments', tournamentsRouter);
 app.use('/api/users', usersRouter);
 app.use('/api/matches', matchesRouter);
 app.use('/api/wallet', walletRouter);
+app.use('/api/otp', otpRouter);
 
 app.get('/api/health', (req, res) => res.json({ ok: true, time: new Date().toISOString() }));
 

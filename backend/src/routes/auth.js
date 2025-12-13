@@ -4,12 +4,14 @@ import bcrypt from 'bcryptjs';
 import { z } from 'zod';
 import jwt from 'jsonwebtoken';
 import { requireAuth } from '../middleware/auth.js';
+import { normalizePhone } from '../services/smsService.js';
 
 const router = Router();
 
 const RegisterSchema = z.object({
   name: z.string().min(2, 'Name must be at least 2 characters').max(60),
   email: z.string().email('Invalid email'),
+  phone: z.string().min(10, 'Phone number is required').max(15),
   password: z.string()
     .min(8, 'Password must be at least 8 characters')
     .regex(/^(?=.*[A-Za-z])(?=.*\d).+$/, 'Password must include letters and numbers'),
@@ -35,8 +37,31 @@ router.post('/register', async (req, res) => {
       return res.status(400).json({ success: false, errors, message: 'Validation failed' });
     }
 
-    const { name, email, password, psnId } = parsed.data;
-const emailL = email.toLowerCase();
+    const { name, email, password, psnId, phone } = parsed.data;
+    const emailL = email.toLowerCase();
+    const normalizedPhone = normalizePhone(phone);
+
+    if (!normalizedPhone) {
+      return res.status(400).json({ success: false, message: 'فرمت شماره موبایل نادرست است' });
+    }
+
+    // Verify that phone has been verified via OTP
+    const verifiedOtp = await prisma.otpCode.findFirst({
+      where: {
+        phone: normalizedPhone,
+        verified: true,
+        createdAt: { gt: new Date(Date.now() - 10 * 60 * 1000) } // within last 10 minutes
+      },
+      orderBy: { createdAt: 'desc' }
+    });
+
+    if (!verifiedOtp) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'لطفاً ابتدا شماره موبایل خود را تایید کنید',
+        requiresPhoneVerification: true
+      });
+    }
 
     const existingEmail = await prisma.user.findUnique({ where: { email: emailL } });
     if (existingEmail) return res.status(409).json({ success: false, message: 'Email already in use' });
@@ -44,10 +69,35 @@ const emailL = email.toLowerCase();
     const existingPSN = await prisma.user.findUnique({ where: { psnId } });
     if (existingPSN) return res.status(409).json({ success: false, message: 'PSN ID already in use' });
 
+    const existingPhone = await prisma.user.findFirst({ where: { phone: normalizedPhone } });
+    if (existingPhone) return res.status(409).json({ success: false, message: 'این شماره موبایل قبلاً ثبت شده است' });
+
     const passwordHash = await bcrypt.hash(password, 10);
     const user = await prisma.user.create({
-      data: { name, email, psnId, passwordHash, role: 'USER' },
-      select: { id: true, email: true, name: true, psnId: true, role: true, createdAt: true }
+      data: { 
+        name, 
+        email: emailL, 
+        psnId, 
+        passwordHash, 
+        phone: normalizedPhone,
+        phoneVerified: true,
+        role: 'USER' 
+      },
+      select: { id: true, email: true, name: true, psnId: true, phone: true, role: true, createdAt: true }
+    });
+
+    // Link the OTP record to the new user
+    await prisma.otpCode.update({
+      where: { id: verifiedOtp.id },
+      data: { userId: user.id }
+    });
+
+    // Clean up old OTPs for this phone
+    await prisma.otpCode.deleteMany({
+      where: {
+        phone: normalizedPhone,
+        id: { not: verifiedOtp.id }
+      }
     });
 
     return res.status(201).json({ success: true, user, message: 'Account created. Please log in.' });

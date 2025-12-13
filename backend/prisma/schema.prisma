@@ -24,6 +24,9 @@ model User {
   email           String    @unique
   name            String
   psnId           String    @unique
+  // Phone number for SMS verification (Iranian format: 09xxxxxxxxx)
+  phone           String?   @unique
+  phoneVerified   Boolean   @default(false)
   // PlayStation Network linking
   // - psnRefreshToken: long sensitive string stored securely (optional)
   psnRefreshToken String?   @db.Text
@@ -46,6 +49,24 @@ model User {
   balanceUsdt        BigInt    @default(0)
   // Transactions for wallet operations
   transactions       Transaction[]
+  // OTP codes for phone verification
+  otpCodes           OtpCode[]
+}
+
+// OTP codes for phone verification
+model OtpCode {
+  id        String   @id @default(cuid())
+  phone     String
+  code      String
+  expiresAt DateTime
+  verified  Boolean  @default(false)
+  attempts  Int      @default(0)
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id])
+  createdAt DateTime @default(now())
+
+  @@index([phone])
+  @@index([phone, code])
 }
 
 model Tournament {

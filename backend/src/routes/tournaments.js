@@ -99,8 +99,6 @@ router.get('/:id', async (req, res) => {
   }
 });
 
-export default router;
-
 // POST /api/tournaments/:id/join - authenticated users join a tournament
 router.post('/:id/join', requireAuth, async (req, res) => {
   try {
@@ -183,3 +181,5 @@ router.post('/:id/join', requireAuth, async (req, res) => {
  * - If startAt <= now → 'live'
  * - If status is COMPLETED → 'completed'
  */
+
+export default router;
