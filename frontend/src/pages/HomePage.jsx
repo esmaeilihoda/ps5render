@@ -140,9 +140,15 @@ const HomePage = () => {
               <span>{t('home.browseTournaments')}</span>
               <ChevronRight size={20} />
             </Link>
-            <a href="https://instagram.com/g4r_official" target="_blank" rel="noopener noreferrer" className="btn-secondary">
+            <a 
+              href="https://instagram.com/g4r_official" 
+              target="_blank" 
+              rel="noopener noreferrer" 
+              className="btn-secondary"
+            >
               <Instagram size={20} />
               <span>Join Community</span>
+              <ChevronRight size={20} />
             </a>
           </motion.div>
 
@@ -349,10 +355,12 @@ const HomePage = () => {
               <Link to="/signup" className="btn-primary large">
                 <Trophy size={24} />
                 <span>{t('home.createAccount')}</span>
+                <ChevronRight size={24} />
               </Link>
               <Link to="/tournaments" className="btn-secondary large">
                 <Gamepad2 size={24} />
                 <span>Browse Games</span>
+                <ChevronRight size={24} />
               </Link>
             </div>
           </motion.div>
