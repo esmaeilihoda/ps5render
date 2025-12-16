@@ -16,6 +16,12 @@ rules: z.string().max(5000).optional().nullable(),
 imageUrl: z.string().url().optional().nullable(),
 entryFee: z.coerce.number().int().min(0),
 prizePool: z.coerce.number().int().min(0),
+currency: z.enum(['TOMAN', 'USDT']).default('TOMAN'),
+prizeDistribution: z.array(z.object({
+  position: z.number().int().min(1),
+  prize: z.number().int().min(0),
+  percentage: z.number().min(0).max(100).optional()
+})).optional().nullable(),
 maxPlayers: z.coerce.number().int().min(2).max(1024),
 startAt: z.coerce.date(),
 });
@@ -120,8 +126,6 @@ data: { status: s.data },
 res.json({ success: true, tournament: updated });
 });
 
-export default router;
-
 // Matches management (admin-only)
 // Create a match: POST /api/admin/tournaments/:id/matches
 router.post('/:id/matches', async (req, res) => {
@@ -196,10 +200,224 @@ router.put('/:id/matches/:matchId', async (req, res) => {
 router.get('/:id/matches', async (req, res) => {
   try {
     const tournamentId = req.params.id;
-    const matches = await prisma.match.findMany({ where: { tournamentId }, orderBy: { round: 'asc' } });
+    const matches = await prisma.match.findMany({ 
+      where: { tournamentId }, 
+      orderBy: { round: 'asc' },
+      include: {
+        player1: { include: { user: { select: { name: true, psnId: true } } } },
+        player2: { include: { user: { select: { name: true, psnId: true } } } },
+        winner: { include: { user: { select: { name: true, psnId: true } } } }
+      }
+    });
     res.json({ success: true, matches });
   } catch (err) {
     console.error('List matches error', err);
     res.status(500).json({ success: false, message: 'Server error' });
   }
 });
+
+// Finalize tournament and distribute prizes
+// POST /api/admin/tournaments/:id/finalize
+router.post('/:id/finalize', async (req, res) => {
+  try {
+    const tournamentId = req.params.id;
+    const tournament = await prisma.tournament.findUnique({
+      where: { id: tournamentId },
+      include: {
+        participants: true,
+        matches: { include: { winner: { include: { user: true } } } }
+      }
+    });
+    
+    if (!tournament) return res.status(404).json({ success: false, message: 'Tournament not found' });
+    if (tournament.status === 'COMPLETED') return res.status(400).json({ success: false, message: 'Already finalized' });
+    if (!tournament.prizeDistribution || tournament.prizeDistribution.length === 0) {
+      return res.status(400).json({ success: false, message: 'Prize distribution not configured' });
+    }
+    
+    // Calculate rankings
+    const participantStats = {};
+    tournament.participants.forEach(p => {
+      participantStats[p.id] = { participantId: p.id, userId: p.userId, wins: 0, points: 0 };
+    });
+    
+    tournament.matches.forEach(match => {
+      if (match.status === 'COMPLETED' && match.winnerId && participantStats[match.winnerId]) {
+        participantStats[match.winnerId].wins += 1;
+        participantStats[match.winnerId].points += 3;
+      }
+    });
+    
+    const rankings = Object.values(participantStats).sort((a, b) => b.wins - a.wins || b.points - a.points);
+    
+    // Distribute prizes
+    const transactions = [];
+    const prizeDistribution = Array.isArray(tournament.prizeDistribution) ? tournament.prizeDistribution : [];
+      
+    for (const prizeConfig of prizeDistribution) {
+      const { position, prize } = prizeConfig;
+      if (position <= rankings.length && prize > 0) {
+        const winner = rankings[position - 1];
+        const currency = tournament.currency || 'TOMAN';
+        const updateData = currency === 'TOMAN'
+          ? { balanceToman: { increment: prize } }
+          : { balanceUsdt: { increment: prize } };
+        
+        await prisma.user.update({ where: { id: winner.userId }, data: updateData });
+        
+        const transaction = await prisma.transaction.create({
+          data: {
+            userId: winner.userId,
+            amount: prize,
+            currency,
+            type: 'PRIZE_PAYOUT',
+            description: `Prize for position ${position} in ${tournament.title}`,
+            status: 'SUCCESS',
+            gateway: 'INTERNAL'
+          }
+        });
+        transactions.push(transaction);
+      }
+    }
+    
+    await prisma.tournament.update({ where: { id: tournamentId }, data: { status: 'COMPLETED' } });
+    
+    res.json({
+      success: true,
+      message: `Tournament finalized. ${transactions.length} prize(s) distributed.`,
+      rankings: rankings.map((r, idx) => ({ position: idx + 1, ...r })),
+      transactions
+    });
+  } catch (err) {
+    console.error('Finalize tournament error', err);
+    res.status(500).json({ success: false, message: 'Server error' });
+  }
+});
+
+// Get tournament participants
+router.get('/:id/participants', async (req, res) => {
+  try {
+    const participants = await prisma.participant.findMany({
+      where: { tournamentId: req.params.id },
+      include: { user: { select: { id: true, name: true, psnId: true } } },
+      orderBy: { joinedAt: 'asc' }
+    });
+    res.json({ success: true, participants });
+  } catch (err) {
+    console.error('Get participants error', err);
+    res.status(500).json({ success: false, message: 'Server error' });
+  }
+});
+
+// Get tournament matches
+router.get('/:id/matches', async (req, res) => {
+  try {
+    const matches = await prisma.match.findMany({
+      where: { tournamentId: req.params.id },
+      include: {
+        player1: { include: { user: { select: { id: true, name: true, psnId: true } } } },
+        player2: { include: { user: { select: { id: true, name: true, psnId: true } } } },
+        winner: { include: { user: { select: { id: true, name: true, psnId: true } } } }
+      },
+      orderBy: [{ round: 'asc' }, { createdAt: 'asc' }]
+    });
+    res.json({ success: true, matches });
+  } catch (err) {
+    console.error('Get matches error', err);
+    res.status(500).json({ success: false, message: 'Server error' });
+  }
+});
+
+// Create a match
+router.post('/:id/matches', async (req, res) => {
+  try {
+    const { player1Id, player2Id, round } = req.body;
+    
+    if (!player1Id || !player2Id) {
+      return res.status(400).json({ success: false, message: 'Both players required' });
+    }
+    
+    if (player1Id === player2Id) {
+      return res.status(400).json({ success: false, message: 'Cannot match player against themselves' });
+    }
+    
+    // Verify both are participants
+    const participants = await prisma.participant.findMany({
+      where: {
+        tournamentId: req.params.id,
+        id: { in: [player1Id, player2Id] },
+        status: 'APPROVED'
+      }
+    });
+    
+    if (participants.length !== 2) {
+      return res.status(400).json({ success: false, message: 'Both players must be approved participants' });
+    }
+    
+    const match = await prisma.match.create({
+      data: {
+        tournamentId: req.params.id,
+        player1Id,
+        player2Id,
+        round: round || 1,
+        status: 'SCHEDULED',
+        scheduledAt: new Date()
+      },
+      include: {
+        player1: { include: { user: { select: { id: true, name: true, psnId: true } } } },
+        player2: { include: { user: { select: { id: true, name: true, psnId: true } } } }
+      }
+    });
+    
+    res.json({ success: true, match });
+  } catch (err) {
+    console.error('Create match error', err);
+    res.status(500).json({ success: false, message: 'Server error' });
+  }
+});
+
+// Update match (scores, winner, status)
+router.put('/:tournamentId/matches/:matchId', async (req, res) => {
+  try {
+    const { matchId } = req.params;
+    const { score1, score2, status, winnerId } = req.body;
+    
+    const updateData = {};
+    if (typeof score1 !== 'undefined') updateData.score1 = parseInt(score1);
+    if (typeof score2 !== 'undefined') updateData.score2 = parseInt(score2);
+    if (status) updateData.status = status;
+    
+    // Auto-determine winner from scores if not provided
+    if (typeof score1 !== 'undefined' && typeof score2 !== 'undefined') {
+      const match = await prisma.match.findUnique({ where: { id: matchId } });
+      if (!match) {
+        return res.status(404).json({ success: false, message: 'Match not found' });
+      }
+      
+      if (score1 > score2) {
+        updateData.winnerId = match.player1Id;
+      } else if (score2 > score1) {
+        updateData.winnerId = match.player2Id;
+      }
+    }
+    
+    if (winnerId) updateData.winnerId = winnerId;
+    
+    const updated = await prisma.match.update({
+      where: { id: matchId },
+      data: updateData,
+      include: {
+        player1: { include: { user: { select: { id: true, name: true, psnId: true } } } },
+        player2: { include: { user: { select: { id: true, name: true, psnId: true } } } },
+        winner: { include: { user: { select: { id: true, name: true, psnId: true } } } }
+      }
+    });
+    
+    res.json({ success: true, match: updated });
+  } catch (err) {
+    console.error('Update match error', err);
+    res.status(500).json({ success: false, message: 'Server error' });
+  }
+});
+
+export default router;

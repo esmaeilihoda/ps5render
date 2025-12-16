@@ -56,6 +56,8 @@ export const api = {
   tournaments: {
     list: function () { return apiGet('/api/tournaments'); },
     getBySlug: function (slug) { return apiGet('/api/tournaments/' + slug); },
+    getById: function (id) { return apiGet('/api/tournaments/' + id); },
+    join: function (id) { return apiPost('/api/tournaments/' + id + '/join'); },
   },
 
   players: {
@@ -136,6 +138,7 @@ export const api = {
       },
       create: (data) => apiPost('/api/admin/tournaments', data),
       get: (id) => apiGet(`/api/admin/tournaments/${id}`),
+      getOne: (id) => apiGet(`/api/admin/tournaments/${id}`),
       update: (id, data) => apiPut(`/api/admin/tournaments/${id}`, data),
       remove: (id) => apiDelete(`/api/admin/tournaments/${id}`),
       setStatus: (id, status) => apiPatch(`/api/admin/tournaments/${id}/status`, { status }),

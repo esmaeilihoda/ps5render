@@ -256,7 +256,10 @@ const HomePage = () => {
                     <Star size={14} />
                     <span>{tournament.status}</span>
                   </div>
-                  <div className="tournament-prize">{typeof tournament.prizePool === 'number' ? tournament.prizePool.toLocaleString() : tournament.prizePool}</div>
+                  <div className="tournament-prize">
+                    {tournament.currency === 'USDT' ? '$' : 'T'}
+                    {typeof tournament.prizePool === 'number' ? tournament.prizePool.toLocaleString() : tournament.prizePool}
+                  </div>
                 </div>
 
                 <h3 className="tournament-name">{tournament.title}</h3>
@@ -286,7 +289,7 @@ const HomePage = () => {
 
                 <div className="tournament-footer">
                   <div className="entry-fee">
-                    {t('home.entry')}: <span>{tournament.entryFee && Number(tournament.entryFee) > 0 ? (`$${tournament.entryFee}`) : 'Free'}</span>
+                    {t('home.entry')}: <span>{tournament.entryFee && Number(tournament.entryFee) > 0 ? (`${tournament.currency === 'USDT' ? '$' : 'T'}${Number(tournament.entryFee).toLocaleString()}`) : 'Free'}</span>
                   </div>
                   <Link to={'/tournaments/' + tournament.id} className="join-btn">
                     {t('home.joinNow')}

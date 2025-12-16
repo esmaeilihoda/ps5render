@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
+import { useNavigate } from 'react-router-dom';
 import {
   Trophy,
   Calendar,
@@ -13,6 +14,7 @@ import {
   Loader
 } from 'lucide-react';
 import { useLanguage } from '../contexts/LanguageContext';
+import { useAuth } from '../contexts/AuthContext';
 import api from '../services/api';
 import '../styles/TournamentsPage.css';
 
@@ -46,6 +48,8 @@ function toCard(t) {
 
   const prize = Number(t.prizePool ?? 0);
   const entry = Number(t.entryFee ?? 0);
+  const currency = t.currency || 'TOMAN';
+  const currencySymbol = currency === 'USDT' ? '$' : 'T';
 
   const tier = prize >= 5000 ? 'Elite' : prize >= 1000 ? 'Premium' : 'Standard';
 
@@ -55,13 +59,14 @@ function toCard(t) {
     status,
     date: start.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }),
     time: start.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' }),
-    prize: `$${prize.toLocaleString()}`,
-    entry: entry > 0 ? `$${entry.toFixed(2)}` : 'Free',
-    players: 0, // Wire this later when join is implemented
+    prize: `${currencySymbol}${prize.toLocaleString()}`,
+    entry: entry > 0 ? `${currencySymbol}${entry.toLocaleString()}` : 'Free',
+    players: t.currentPlayers || 0,
     maxPlayers: t.maxPlayers || 0,
     tier,
     region: 'Global',
     startAt: t.startAt,
+    currency: currency
   };
 }
 
@@ -69,10 +74,22 @@ const TournamentsPage = () => {
   const [selectedFilter, setSelectedFilter] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
   const { t } = useLanguage();
+  const { user } = useAuth();
+  const navigate = useNavigate();
 
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+
+  const handleJoinTournament = (tournamentId) => {
+    if (!user) {
+      alert('Please login to join tournaments');
+      navigate('/login');
+      return;
+    }
+    // Navigate to tournament details page where they can join
+    navigate(`/tournaments/${tournamentId}`);
+  };
 
   useEffect(() => {
     let cancel = false;
@@ -266,7 +283,10 @@ const TournamentsPage = () => {
                       </div>
                       <div className="entry-section">
                         <div className="entry-price">{tournament.entry}</div>
-                        <button className="join-tournament-btn">
+                        <button 
+                          className="join-tournament-btn"
+                          onClick={() => handleJoinTournament(tournament.id)}
+                        >
                           <Zap size={18} />
                           Join Now
                         </button>

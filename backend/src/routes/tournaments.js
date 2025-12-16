@@ -23,25 +23,35 @@ router.get('/', async (req, res) => {
             name: true,
             psnId: true
           }
+        },
+        participants: {
+          select: {
+            status: true
+          }
         }
       }
     });
 
     // Map to frontend-friendly format
-    const items = tournaments.map(t => ({
-      id: t.id,
-      title: t.title,
-      game: t.game,
-      description: t.description,
-      rules: t.rules,
-      imageUrl: t.imageUrl,
-      startAt: t.startAt,
-      entryFee: t.entryFee,
-      prizePool: t.prizePool,
-      maxPlayers: t.maxPlayers,
-      status: t.status,
-      createdBy: t.createdBy
-    }));
+    const items = tournaments.map(t => {
+      const currentPlayers = t.participants.filter(p => p.status === 'APPROVED').length;
+      return {
+        id: t.id,
+        title: t.title,
+        game: t.game,
+        description: t.description,
+        rules: t.rules,
+        imageUrl: t.imageUrl,
+        startAt: t.startAt,
+        entryFee: t.entryFee,
+        prizePool: t.prizePool,
+        currency: t.currency,
+        maxPlayers: t.maxPlayers,
+        currentPlayers: currentPlayers,
+        status: t.status,
+        createdBy: t.createdBy
+      };
+    });
 
     res.json({ success: true, items });
   } catch (err) {
@@ -62,6 +72,19 @@ router.get('/:id', async (req, res) => {
             name: true,
             psnId: true
           }
+        },
+        participants: {
+          select: {
+            id: true,
+            userId: true,
+            status: true
+          }
+        },
+        matches: {
+          select: {
+            id: true,
+            status: true
+          }
         }
       }
     });
@@ -76,6 +99,9 @@ router.get('/:id', async (req, res) => {
       return res.status(404).json({ success: false, message: 'Tournament not found' });
     }
 
+    // Calculate current players (only APPROVED participants count)
+    const currentPlayers = tournament.participants.filter(p => p.status === 'APPROVED').length;
+
     res.json({
       success: true,
       tournament: {
@@ -88,7 +114,11 @@ router.get('/:id', async (req, res) => {
         startAt: tournament.startAt,
         entryFee: tournament.entryFee,
         prizePool: tournament.prizePool,
+        currency: tournament.currency,
         maxPlayers: tournament.maxPlayers,
+        currentPlayers: currentPlayers,
+        participantCount: tournament.participants.length,
+        matchCount: tournament.matches.length,
         status: tournament.status,
         createdBy: tournament.createdBy
       }
@@ -106,9 +136,28 @@ router.post('/:id/join', requireAuth, async (req, res) => {
     const userId = req.user.id;
 
     // Ensure tournament exists and is PUBLISHED
-    const tournament = await prisma.tournament.findUnique({ where: { id: tournamentId } });
+    const tournament = await prisma.tournament.findUnique({ 
+      where: { id: tournamentId },
+      include: { participants: true }
+    });
     if (!tournament) return res.status(404).json({ success: false, message: 'Tournament not found' });
     if (tournament.status !== 'PUBLISHED') return res.status(400).json({ success: false, message: 'Tournament not open for joining' });
+
+    // Check if tournament is full
+    const approvedParticipants = tournament.participants.filter(p => p.status === 'APPROVED');
+    if (approvedParticipants.length >= tournament.maxPlayers) {
+      return res.status(400).json({ success: false, message: 'Tournament is full' });
+    }
+
+    // Check if user is already a participant
+    const existing = await prisma.participant.findFirst({ where: { tournamentId, userId } });
+    if (existing) {
+      if (existing.status === 'REJECTED' || existing.status === 'LEFT') {
+        // Allow re-joining if previously rejected or left
+      } else {
+        return res.status(400).json({ success: false, message: 'You are already joined in this tournament' });
+      }
+    }
 
     // Multi-currency join logic
     const currency = tournament.currency || 'TOMAN';
@@ -150,14 +199,18 @@ router.post('/:id/join', requireAuth, async (req, res) => {
       },
     });
 
-    // Check if participant already exists
-    const existing = await prisma.participant.findFirst({ where: { tournamentId, userId } });
-    if (existing) return res.status(200).json({ success: true, participant: existing });
-
-    // Create participant (default status PENDING)
-    const participant = await prisma.participant.create({
-      data: { tournamentId, userId }
-    });
+    // Create or update participant
+    let participant;
+    if (existing) {
+      participant = await prisma.participant.update({
+        where: { id: existing.id },
+        data: { status: 'APPROVED' }
+      });
+    } else {
+      participant = await prisma.participant.create({
+        data: { tournamentId, userId, status: 'APPROVED' }
+      });
+    }
 
     res.status(201).json({ success: true, participant });
   } catch (err) {

@@ -676,3 +676,73 @@
     padding: 24px 20px;
   }
 }
+
+/* Button Styles for PSN Linking Form */
+.profile-page .btn-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px 24px;
+  font-size: 14px;
+  font-weight: 700;
+  border-radius: 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  transition: all 0.3s ease;
+  white-space: nowrap;
+  cursor: pointer;
+  width: fit-content;
+  flex-shrink: 0;
+  flex-grow: 0;
+  box-sizing: border-box;
+  background: var(--gradient-primary) !important;
+  color: #ffffff !important;
+  border: 2px solid transparent;
+  box-shadow: 0 4px 20px rgba(0, 217, 255, 0.4);
+}
+
+.profile-page .btn-primary:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 30px rgba(0, 217, 255, 0.6);
+}
+
+.profile-page .btn-primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+.profile-page .btn-secondary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px 24px;
+  font-size: 14px;
+  font-weight: 700;
+  border-radius: 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  transition: all 0.3s ease;
+  white-space: nowrap;
+  cursor: pointer;
+  width: fit-content;
+  flex-shrink: 0;
+  flex-grow: 0;
+  box-sizing: border-box;
+  background: rgba(255, 255, 255, 0.05) !important;
+  color: #ffffff !important;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+}
+
+.profile-page .btn-secondary:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.1) !important;
+  border-color: var(--ps-electric);
+  transform: translateY(-2px);
+}
+
+.profile-page .btn-secondary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

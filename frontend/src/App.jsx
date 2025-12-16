@@ -15,6 +15,7 @@ import GameHubPage from './pages/GameHubPage';
 import ProtectedRoute from './components/ProtectedRoute';
 import AdminRoute from './components/AdminRoute';           // ✅ Correct import
 import AdminTournaments from './pages/admin/AdminTournaments'; // ✅ Admin page
+import AdminTournamentDetail from './pages/admin/AdminTournamentDetail'; // ✅ Detail page
 import AdminTransactions from './pages/admin/AdminTransactions';
 
 function App() {
@@ -57,6 +58,24 @@ function App() {
               element={
                 <AdminRoute>
                   <AdminTournaments />
+                </AdminRoute>
+              }
+            />
+
+            <Route
+              path="/admin/tournaments"
+              element={
+                <AdminRoute>
+                  <AdminTournaments />
+                </AdminRoute>
+              }
+            />
+
+            <Route
+              path="/admin/tournaments/:id"
+              element={
+                <AdminRoute>
+                  <AdminTournamentDetail />
                 </AdminRoute>
               }
             />

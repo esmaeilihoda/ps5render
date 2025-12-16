@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { api } from '../../services/api';
 import { GAMES_CONFIG } from '../../data/games';
 import '../../styles/SignUpPage.css';
@@ -27,6 +28,7 @@ const emptyForm = {
 };
 
 export default function AdminTournaments() {
+  const navigate = useNavigate();
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -411,6 +413,7 @@ export default function AdminTournaments() {
                     <td style={{ padding: 8 }}>{t.maxPlayers}</td>
                     <td style={{ padding: 8 }}>{t.status}</td>
                     <td style={{ padding: 8, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                      <button className="btn-primary" onClick={() => navigate(`/admin/tournaments/${t.id}`)}>Manage</button>
                       <button className="btn-primary" onClick={() => startEdit(t)}>Edit</button>
                       <button
                         className="btn-primary"
