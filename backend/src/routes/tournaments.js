@@ -216,6 +216,63 @@ router.post('/:id/join', requireAuth, async (req, res) => {
     res.status(201).json({ success: true, participant });
   } catch (err) {
     console.error('Join tournament error', err);
+    // Return more detailed error info for debugging
+    res.status(500).json({ 
+      success: false, 
+      message: 'Server error',
+      error: process.env.NODE_ENV !== 'production' ? err.message : undefined
+    });
+  }
+});
+
+// GET /api/tournaments/:id/matches - Get matches for a tournament (public)
+router.get('/:id/matches', async (req, res) => {
+  try {
+    const tournament = await prisma.tournament.findUnique({
+      where: { id: req.params.id },
+      select: { id: true, status: true }
+    });
+
+    if (!tournament) {
+      return res.status(404).json({ success: false, message: 'Tournament not found' });
+    }
+
+    // Only show matches for PUBLISHED and COMPLETED tournaments
+    if (!['PUBLISHED', 'COMPLETED'].includes(tournament.status)) {
+      return res.status(404).json({ success: false, message: 'Tournament not found' });
+    }
+
+    const matches = await prisma.match.findMany({
+      where: { tournamentId: req.params.id },
+      include: {
+        player1: {
+          include: {
+            user: {
+              select: { id: true, name: true, psnId: true }
+            }
+          }
+        },
+        player2: {
+          include: {
+            user: {
+              select: { id: true, name: true, psnId: true }
+            }
+          }
+        },
+        winner: {
+          include: {
+            user: {
+              select: { id: true, name: true, psnId: true }
+            }
+          }
+        }
+      },
+      orderBy: [{ round: 'asc' }, { createdAt: 'asc' }]
+    });
+
+    res.json({ success: true, matches });
+  } catch (err) {
+    console.error('Get tournament matches error', err);
     res.status(500).json({ success: false, message: 'Server error' });
   }
 });
