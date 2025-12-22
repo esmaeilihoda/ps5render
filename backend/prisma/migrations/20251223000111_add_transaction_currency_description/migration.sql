@@ -1,0 +1,3 @@
+-- AlterTable
+ALTER TABLE "Transaction" ADD COLUMN IF NOT EXISTS "currency" TEXT NOT NULL DEFAULT 'TOMAN';
+ALTER TABLE "Transaction" ADD COLUMN IF NOT EXISTS "description" TEXT;
