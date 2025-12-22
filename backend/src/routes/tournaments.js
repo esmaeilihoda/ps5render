@@ -177,10 +177,11 @@ router.post('/:id/join', requireAuth, async (req, res) => {
       return res.status(400).json({ success: false, message: 'Insufficient funds' });
     }
 
-    // Deduct funds and create transaction
+    // Deduct funds and create transaction (use BigInt for balance fields)
+    const entryFeeBigInt = BigInt(entryFee);
     const updateData = currency === 'TOMAN'
-      ? { balanceToman: { decrement: entryFee } }
-      : { balanceUsdt: { decrement: entryFee } };
+      ? { balanceToman: { decrement: entryFeeBigInt } }
+      : { balanceUsdt: { decrement: entryFeeBigInt } };
 
     await prisma.user.update({
       where: { id: userId },
@@ -190,7 +191,7 @@ router.post('/:id/join', requireAuth, async (req, res) => {
     await prisma.transaction.create({
       data: {
         userId,
-        amount: entryFee,
+        amount: entryFeeBigInt,
         currency,
         gateway: 'INTERNAL',
         status: 'SUCCESS',
