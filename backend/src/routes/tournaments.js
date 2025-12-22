@@ -215,12 +215,16 @@ router.post('/:id/join', requireAuth, async (req, res) => {
 
     res.status(201).json({ success: true, participant });
   } catch (err) {
-    console.error('Join tournament error', err);
-    // Return more detailed error info for debugging
+    console.error('Join tournament error:', err?.message, err?.stack);
+    // Return detailed error info for debugging (temporarily enabled)
     res.status(500).json({ 
       success: false, 
       message: 'Server error',
-      error: process.env.NODE_ENV !== 'production' ? err.message : undefined
+      debug: {
+        error: err?.message,
+        code: err?.code,
+        meta: err?.meta
+      }
     });
   }
 });
