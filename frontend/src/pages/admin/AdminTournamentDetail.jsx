@@ -270,6 +270,7 @@ export default function AdminTournamentDetail() {
                 <tr style={{ textAlign: 'left', borderBottom: '1px solid #003066' }}>
                   <th style={{ padding: 8 }}>Player</th>
                   <th style={{ padding: 8 }}>PSN ID</th>
+                  <th style={{ padding: 8 }}>Phone</th>
                   <th style={{ padding: 8 }}>Status</th>
                   <th style={{ padding: 8 }}>Joined</th>
                 </tr>
@@ -277,7 +278,7 @@ export default function AdminTournamentDetail() {
               <tbody>
                 {participants.length === 0 ? (
                   <tr>
-                    <td colSpan="4" style={{ padding: 16, textAlign: 'center', color: 'rgba(255,255,255,0.5)' }}>
+                    <td colSpan="5" style={{ padding: 16, textAlign: 'center', color: 'rgba(255,255,255,0.5)' }}>
                       No participants yet. Players need to join this tournament.
                     </td>
                   </tr>
@@ -286,6 +287,7 @@ export default function AdminTournamentDetail() {
                     <tr key={p.id} style={{ borderBottom: '1px solid #001a3d' }}>
                       <td style={{ padding: 8 }}>{p.user?.name || 'Unknown'}</td>
                       <td style={{ padding: 8 }}>{p.user?.psnId || '—'}</td>
+                      <td style={{ padding: 8 }}>{p.user?.phone || '—'}</td>
                       <td style={{ padding: 8 }}>{p.status}</td>
                       <td style={{ padding: 8 }}>{new Date(p.joinedAt).toLocaleString()}</td>
                     </tr>

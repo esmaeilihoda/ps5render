@@ -299,7 +299,7 @@ router.get('/:id/participants', async (req, res) => {
   try {
     const participants = await prisma.participant.findMany({
       where: { tournamentId: req.params.id },
-      include: { user: { select: { id: true, name: true, psnId: true } } },
+      include: { user: { select: { id: true, name: true, psnId: true, phone: true } } },
       orderBy: { joinedAt: 'asc' }
     });
     res.json({ success: true, participants });
